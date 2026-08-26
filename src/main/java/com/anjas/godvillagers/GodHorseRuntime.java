@@ -5,6 +5,8 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
@@ -21,21 +23,15 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-/**
- * Lightweight event-driven runtime for tagged God Skeleton Horses.
- *
- * The old gameplay contract is preserved: water and lava act like a solid
- * floor for the God Horse, with or without a rider. Unlike the original heavy
- * implementation, this tracks only loaded tagged horses and normally samples
- * just the blocks around each horse's feet. A bounded downward scan is used
- * only while the horse is airborne/falling toward a fluid surface.
- */
+/** Lightweight God Skeleton Horse runtime. */
 public final class GodHorseRuntime {
     private static final String TAG = "godvillagers_god_horse";
     private static final String INIT_TAG = "godvillagers_god_horse_initialized_clean";
     private static final Set<SkeletonHorse> HORSES = Collections.newSetFromMap(new WeakHashMap<>());
     private static final int FALL_SCAN_DEPTH = 24;
     private static final int SURFACE_SCAN_UP = 64;
+    private static final int DISCOVERY_INTERVAL_TICKS = 100; // rare safety net; normal tracking is event-driven
+    private static int discoveryTicker;
 
     private GodHorseRuntime() {}
 
@@ -43,33 +39,74 @@ public final class GodHorseRuntime {
         ServerEntityEvents.ENTITY_LOAD.register(GodHorseRuntime::onLoad);
         ServerEntityEvents.ENTITY_UNLOAD.register(GodHorseRuntime::onUnload);
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            HORSES.removeIf(horse -> horse.isRemoved() || !isGodHorse(horse));
+            HORSES.removeIf(horse -> horse.isRemoved() || !isRecognizedGodHorse(horse));
             for (SkeletonHorse horse : HORSES) tickHorse(horse);
+
+            // Safety net for legacy worlds / entities that were loaded before their old marker
+            // became visible. Runs only once every 5 seconds, never every tick.
+            if (++discoveryTicker >= DISCOVERY_INTERVAL_TICKS) {
+                discoveryTicker = 0;
+                discoverLegacyHorses(server);
+            }
         });
         ServerLivingEntityEvents.ALLOW_DAMAGE.register(GodHorseRuntime::allowDamage);
     }
 
-    private static void onLoad(Entity entity, net.minecraft.server.level.ServerLevel level) {
-        if (entity instanceof SkeletonHorse horse && isGodHorse(horse)) {
-            HORSES.add(horse);
-            initialize(horse);
-        }
+    private static void onLoad(Entity entity, ServerLevel level) {
+        if (entity instanceof SkeletonHorse horse && isRecognizedGodHorse(horse)) promote(horse);
     }
 
-    private static void onUnload(Entity entity, net.minecraft.server.level.ServerLevel level) {
+    private static void onUnload(Entity entity, ServerLevel level) {
         if (entity instanceof SkeletonHorse horse) HORSES.remove(horse);
     }
 
-    private static boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
-        if (!(entity instanceof SkeletonHorse horse) || !isGodHorse(horse)) return true;
-        if (source.is(DamageTypeTags.IS_FALL)
-                || source.is(DamageTypeTags.IS_FIRE)
-                || source.is(DamageTypeTags.IS_EXPLOSION)) return false;
-        return true;
+    private static void discoverLegacyHorses(MinecraftServer server) {
+        for (ServerLevel level : server.getAllLevels()) {
+            for (Entity entity : level.getAllEntities()) {
+                if (entity instanceof SkeletonHorse horse && !HORSES.contains(horse) && isRecognizedGodHorse(horse)) {
+                    promote(horse);
+                }
+            }
+        }
     }
 
-    private static boolean isGodHorse(SkeletonHorse horse) {
-        return horse.entityTags().contains(TAG);
+    private static void promote(SkeletonHorse horse) {
+        horse.addTag(TAG); // canonicalize old horses so future loads take the fast path
+        HORSES.add(horse);
+        initialize(horse);
+    }
+
+    private static boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
+        if (!(entity instanceof SkeletonHorse horse) || !isRecognizedGodHorse(horse)) return true;
+        return !(source.is(DamageTypeTags.IS_FALL)
+                || source.is(DamageTypeTags.IS_FIRE)
+                || source.is(DamageTypeTags.IS_EXPLOSION));
+    }
+
+    private static boolean isRecognizedGodHorse(SkeletonHorse horse) {
+        return horse.entityTags().contains(TAG)
+                || horse.entityTags().contains(INIT_TAG)
+                || hasGodHorseSignature(horse);
+    }
+
+    /**
+     * Legacy migration signature. Natural skeleton horses do not have these extreme
+     * base attributes. Requiring several values together avoids converting normal horses.
+     */
+    private static boolean hasGodHorseSignature(SkeletonHorse horse) {
+        return approximately(baseValue(horse, Attributes.MAX_HEALTH), 80.0D, 0.01D)
+                && approximately(baseValue(horse, Attributes.JUMP_STRENGTH), 1.8D, 0.01D)
+                && (approximately(baseValue(horse, Attributes.MOVEMENT_SPEED), 0.45D, 0.01D)
+                    || approximately(baseValue(horse, Attributes.MOVEMENT_SPEED), 1.80D, 0.01D));
+    }
+
+    private static double baseValue(SkeletonHorse horse, Holder<Attribute> attribute) {
+        AttributeInstance instance = horse.getAttribute(attribute);
+        return instance == null ? Double.NaN : instance.getBaseValue();
+    }
+
+    private static boolean approximately(double actual, double expected, double epsilon) {
+        return !Double.isNaN(actual) && Math.abs(actual - expected) <= epsilon;
     }
 
     private static void base(SkeletonHorse horse, Holder<Attribute> attribute, double value) {
@@ -98,7 +135,6 @@ public final class GodHorseRuntime {
         return fluid(horse.level().getFluidState(new BlockPos(x, y, z)));
     }
 
-    /** Returns the top Y of a connected fluid column, starting from a known fluid block. */
     private static double topOfFluidColumn(SkeletonHorse horse, int x, int fluidY, int z) {
         int top = fluidY;
         for (int i = 0; i < SURFACE_SCAN_UP; i++) {
@@ -108,27 +144,18 @@ public final class GodHorseRuntime {
         return top + 1.0D;
     }
 
-    /**
-     * Finds a fluid surface beneath/around the horse.
-     * Fast path: the horse is already on/inside fluid, requiring only a few reads.
-     * Slow path: only while falling, scan a bounded distance downward so a jump or
-     * fall into water/lava cannot slip several blocks below the surface.
-     */
     private static double surfaceY(SkeletonHorse horse) {
         int x = (int) Math.floor(horse.getX());
         int z = (int) Math.floor(horse.getZ());
         int y = (int) Math.floor(horse.getY());
 
-        // Normal steady-state: surface directly under feet or horse currently in fluid.
         for (int dy = 1; dy >= -2; dy--) {
             int py = y + dy;
             if (fluidAt(horse, x, py, z)) return topOfFluidColumn(horse, x, py, z);
         }
 
-        // While rising, do not magnetically snap to a fluid surface below.
         if (horse.getDeltaMovement().y > 0.0D) return Double.NaN;
 
-        // Falling/entering fluid: bounded look-down prevents tunnelling through surface.
         for (int depth = 3; depth <= FALL_SCAN_DEPTH; depth++) {
             int py = y - depth;
             if (fluidAt(horse, x, py, z)) return topOfFluidColumn(horse, x, py, z);
@@ -163,16 +190,11 @@ public final class GodHorseRuntime {
         Vec3 velocity = horse.getDeltaMovement();
         double y = horse.getY();
 
-        // Preserve real jumps. As soon as the horse is rising away from the surface,
-        // gravity is restored so the arc remains natural and it can land again.
         if (velocity.y > 0.05D && y >= surface - 0.05D) {
             unlockFluid(horse);
             return;
         }
 
-        // Do not pull a horse downward from high in the air. Wait until it actually
-        // reaches/crosses the virtual fluid floor. If vanilla moved it slightly below
-        // the surface in one tick, snap it back immediately before it can sink farther.
         if (y > surface + 0.45D && velocity.y <= 0.0D) {
             unlockFluid(horse);
             return;
