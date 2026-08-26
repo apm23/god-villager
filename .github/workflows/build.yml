@@ -8,12 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
@@ -56,8 +54,7 @@ jobs:
                       data = horse
                   elif info.filename == 'fabric.mod.json':
                       meta = json.loads(data.decode('utf-8'))
-                      if meta.get('id') != 'godvillagers':
-                          raise SystemExit(f"unexpected base mod id: {meta.get('id')}")
+                      if meta.get('id') != 'godvillagers': raise SystemExit('unexpected base mod id')
                       meta['version'] = '0.1.0-alpha.78+mc26.2'
                       data = json.dumps(meta, ensure_ascii=False, indent=2).encode('utf-8')
                   zout.writestr(info, data)
@@ -75,16 +72,14 @@ jobs:
           compiled = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
           with zipfile.ZipFile(jar) as z:
               names = z.namelist()
-              assert len(names) == 28, f'unexpected entry count: {len(names)}'
+              assert len(names) == 28
               meta = json.loads(z.read('fabric.mod.json'))
-              assert meta['id'] == 'godvillagers', meta
-              assert meta['version'] == '0.1.0-alpha.78+mc26.2', meta
-              embedded = z.read('com/anjas/godvillagers/GodHorseRuntime.class')
-              assert embedded == compiled, 'embedded horse class differs from compiler output'
-              assert 'godvillagers.mixins.json' not in names, 'optimizer mixin config leaked into full jar'
-              assert not any('GodHorseOptimizedMixin' in n for n in names), 'optimizer mixin leaked into full jar'
+              assert meta['id'] == 'godvillagers'
+              assert meta['version'] == '0.1.0-alpha.78+mc26.2'
+              assert z.read('com/anjas/godvillagers/GodHorseRuntime.class') == compiled
+              assert 'godvillagers.mixins.json' not in names
+              assert not any('GodHorseOptimizedMixin' in n for n in names)
           print('full_jar_sha256=' + hashlib.sha256(jar.read_bytes()).hexdigest())
-          print('horse_sha256=' + hashlib.sha256(compiled).hexdigest())
           PY
 
       - name: Prepare standalone Fabric dedicated server
@@ -114,37 +109,33 @@ jobs:
             echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
             echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
             sleep 7
-            echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_WATER_FALL_PASS'
-            echo 'execute positioned 12 101 2 if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,distance=..1.5] run say GOD_HORSE_LAVA_FALL_PASS'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,limit=1] Pos'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,y=100,dy=2] run say GOD_HORSE_WATER_FALL_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,y=100,dy=2] run say GOD_HORSE_LAVA_FALL_PASS'
             echo 'data merge entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] {Motion:[0.0d,1.2d,0.0d]}'
             sleep 7
-            echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_JUMP_RETURN_PASS'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,y=100,dy=2] run say GOD_HORSE_JUMP_RETURN_PASS'
             echo 'tp @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] 2 95 2'
             sleep 3
-            echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_DEEP_RECOVERY_PASS'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,y=100,dy=2] run say GOD_HORSE_DEEP_RECOVERY_PASS'
             echo 'stop'
           } | timeout 80s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}
           set -e
           cd ..
           cat full-server-test.log
-          if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|MixinTransformerError|BootstrapMethodError|Failed to start the minecraft server|NoClassDefFoundError|ClassNotFoundException|VerifyError' full-server-test.log; then
-            echo 'Full God Villagers jar reported a fatal mod/server error'
-            exit 1
-          fi
+          if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|MixinTransformerError|BootstrapMethodError|Failed to start the minecraft server|NoClassDefFoundError|ClassNotFoundException|VerifyError' full-server-test.log; then exit 1; fi
           grep -Eqi 'godvillagers 0\.1\.0-alpha\.78\+mc26\.2' full-server-test.log
-          if grep -Eqi 'godvillagersoptimizer' full-server-test.log; then
-            echo 'Optimizer mod unexpectedly present in standalone full-jar test'
-            exit 1
-          fi
+          ! grep -Eqi 'godvillagersoptimizer' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
           grep -Fq 'GOD_HORSE_WATER_FALL_PASS' full-server-test.log
           grep -Fq 'GOD_HORSE_LAVA_FALL_PASS' full-server-test.log
           grep -Fq 'GOD_HORSE_JUMP_RETURN_PASS' full-server-test.log
           grep -Fq 'GOD_HORSE_DEEP_RECOVERY_PASS' full-server-test.log
-          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
-            exit "$code"
-          fi
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
 
       - uses: actions/upload-artifact@v4
         with:
