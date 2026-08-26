@@ -4,7 +4,7 @@ on:
   pull_request:
 
 jobs:
-  build:
+  build-and-server-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,8 +15,42 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-      - run: gradle build --stacktrace
+
+      - name: Clean build
+        run: gradle clean build --stacktrace
+
+      - name: Verify jars
+        run: |
+          set -euxo pipefail
+          test -f build/libs/god-villagers-optimizer-0.1.0-alpha.77+mc26.2.jar
+          unzip -t build/libs/god-villagers-optimizer-0.1.0-alpha.77+mc26.2.jar
+          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
+
+      - name: Dedicated server smoke test
+        run: |
+          set -euxo pipefail
+          mkdir -p run
+          echo 'eula=true' > run/eula.txt
+          set +e
+          timeout 70s gradle runServer --stacktrace > server-test.log 2>&1
+          code=$?
+          set -e
+          cat server-test.log
+          if grep -Eqi 'Exception|Caused by:|Mixin apply failed|Could not execute entrypoint|Incompatible mods found' server-test.log; then
+            echo 'Dedicated server reported a fatal error'
+            exit 1
+          fi
+          if ! grep -Eqi 'Done \(|Dedicated Server|Starting minecraft server version|Stopping server' server-test.log; then
+            echo 'Dedicated server never reached startup'
+            exit 1
+          fi
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+            exit "$code"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha74-optimizer
-          path: build/libs/*.jar
+          name: god-villagers-alpha77-verified
+          path: |
+            build/libs/*.jar
+            server-test.log
