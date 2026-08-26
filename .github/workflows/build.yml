@@ -111,16 +111,16 @@ jobs:
             sleep 7
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,limit=1] Pos'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,y=100,dy=2] run say GOD_HORSE_WATER_FALL_PASS'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,y=100,dy=2] run say GOD_HORSE_LAVA_FALL_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_WATER_FALL_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,x=10,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_LAVA_FALL_PASS'
             echo 'data merge entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] {Motion:[0.0d,1.2d,0.0d]}'
             sleep 7
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,y=100,dy=2] run say GOD_HORSE_JUMP_RETURN_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_JUMP_RETURN_PASS'
             echo 'tp @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] 2 95 2'
             sleep 3
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,y=100,dy=2] run say GOD_HORSE_DEEP_RECOVERY_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_DEEP_RECOVERY_PASS'
             echo 'stop'
           } | timeout 80s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}
