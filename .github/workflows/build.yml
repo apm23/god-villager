@@ -37,7 +37,7 @@ jobs:
           test -f "$CLASS"
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
 
-      - name: Assemble full God Villagers alpha.78
+      - name: Assemble full God Villagers alpha.79
         run: |
           set -euxo pipefail
           python3 - <<'PY'
@@ -45,7 +45,7 @@ jobs:
           from pathlib import Path
           base = Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
           horse = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
-          out = Path('build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar')
+          out = Path('build/full/god-villagers-0.1.0-alpha.79+mc26.2.jar')
           out.parent.mkdir(parents=True, exist_ok=True)
           with zipfile.ZipFile(base, 'r') as zin, zipfile.ZipFile(out, 'w') as zout:
               for info in zin.infolist():
@@ -55,7 +55,7 @@ jobs:
                   elif info.filename == 'fabric.mod.json':
                       meta = json.loads(data.decode('utf-8'))
                       if meta.get('id') != 'godvillagers': raise SystemExit('unexpected base mod id')
-                      meta['version'] = '0.1.0-alpha.78+mc26.2'
+                      meta['version'] = '0.1.0-alpha.79+mc26.2'
                       data = json.dumps(meta, ensure_ascii=False, indent=2).encode('utf-8')
                   zout.writestr(info, data)
           PY
@@ -63,19 +63,19 @@ jobs:
       - name: Verify full jar identity and contents
         run: |
           set -euxo pipefail
-          JAR='build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar'
+          JAR='build/full/god-villagers-0.1.0-alpha.79+mc26.2.jar'
           unzip -t "$JAR"
           python3 - <<'PY'
           import hashlib, json, zipfile
           from pathlib import Path
-          jar = Path('build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar')
+          jar = Path('build/full/god-villagers-0.1.0-alpha.79+mc26.2.jar')
           compiled = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
           with zipfile.ZipFile(jar) as z:
               names = z.namelist()
               assert len(names) == 28
               meta = json.loads(z.read('fabric.mod.json'))
               assert meta['id'] == 'godvillagers'
-              assert meta['version'] == '0.1.0-alpha.78+mc26.2'
+              assert meta['version'] == '0.1.0-alpha.79+mc26.2'
               assert z.read('com/anjas/godvillagers/GodHorseRuntime.class') == compiled
               assert 'godvillagers.mixins.json' not in names
               assert not any('GodHorseOptimizedMixin' in n for n in names)
@@ -91,7 +91,7 @@ jobs:
           java -jar ../fabric-installer.jar server -mcversion 26.2 -loader 0.19.3 -downloadMinecraft
           mkdir -p mods
           curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.158.0+26.2/fabric-api-0.158.0+26.2.jar'
-          cp ../build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar mods/
+          cp ../build/full/god-villagers-0.1.0-alpha.79+mc26.2.jar mods/
           printf 'eula=true\n' > eula.txt
           printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
 
@@ -102,44 +102,66 @@ jobs:
           set +e
           {
             sleep 25
-            echo 'forceload add 0 0 14 4'
+            echo 'forceload add 0 0 24 4'
             sleep 3
             echo 'fill 0 90 0 4 100 4 minecraft:water'
             echo 'fill 10 90 0 14 100 4 minecraft:lava'
-            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
-            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
+            echo 'fill 20 90 0 24 100 4 minecraft:water'
+
+            # Canonical new God Horses: exact spawn command contract used by the mod.
+            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,Temper:100,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
+            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,Temper:100,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
+
+            # Legacy-world simulation: no canonical God tag, only old God attributes.
+            echo 'summon minecraft:skeleton_horse 22 95 2 {Tame:1b,PersistenceRequired:1b,Tags:["legacy_recovery_test"],attributes:[{id:"minecraft:max_health",base:80.0d},{id:"minecraft:movement_speed",base:0.45d},{id:"minecraft:jump_strength",base:1.8d}]}'
+
             sleep 7
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,limit=1] Pos'
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_WATER_FALL_PASS'
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,x=10,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_LAVA_FALL_PASS'
+
             echo 'data merge entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] {Motion:[0.0d,1.2d,0.0d]}'
             sleep 7
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_JUMP_RETURN_PASS'
+
             echo 'tp @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] 2 95 2'
             sleep 3
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_DEEP_RECOVERY_PASS'
+
+            # Wait beyond the 100-tick fallback-discovery interval and assert migration.
+            sleep 6
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=legacy_recovery_test,limit=1] Pos'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=legacy_recovery_test,limit=1] Tags'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=legacy_recovery_test,tag=godvillagers_god_horse,x=20,y=100,z=0,dx=4,dy=2,dz=4] run say GOD_HORSE_LEGACY_RECOVERY_PASS'
+
+            # Natural skeleton horse must NOT be converted by the legacy detector.
+            echo 'summon minecraft:skeleton_horse 30 101 2 {Tame:1b,PersistenceRequired:1b,Tags:["natural_control_test"]}'
+            sleep 6
+            echo 'execute unless entity @e[type=minecraft:skeleton_horse,tag=natural_control_test,tag=godvillagers_god_horse] run say NATURAL_HORSE_NOT_CONVERTED_PASS'
             echo 'stop'
-          } | timeout 80s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
+          } | timeout 95s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}
           set -e
           cd ..
           cat full-server-test.log
           if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|MixinTransformerError|BootstrapMethodError|Failed to start the minecraft server|NoClassDefFoundError|ClassNotFoundException|VerifyError' full-server-test.log; then exit 1; fi
-          grep -Eqi 'godvillagers 0\.1\.0-alpha\.78\+mc26\.2' full-server-test.log
+          grep -Eqi 'godvillagers 0\.1\.0-alpha\.79\+mc26\.2' full-server-test.log
           ! grep -Eqi 'godvillagersoptimizer' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
           grep -Fq 'GOD_HORSE_WATER_FALL_PASS' full-server-test.log
           grep -Fq 'GOD_HORSE_LAVA_FALL_PASS' full-server-test.log
           grep -Fq 'GOD_HORSE_JUMP_RETURN_PASS' full-server-test.log
           grep -Fq 'GOD_HORSE_DEEP_RECOVERY_PASS' full-server-test.log
+          grep -Fq 'GOD_HORSE_LEGACY_RECOVERY_PASS' full-server-test.log
+          grep -Fq 'NATURAL_HORSE_NOT_CONVERTED_PASS' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha78-full-function-verified
+          name: god-villagers-alpha79-legacy-function-verified
           path: |
-            build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar
+            build/full/god-villagers-0.1.0-alpha.79+mc26.2.jar
             full-server-test.log
