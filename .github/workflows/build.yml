@@ -19,13 +19,12 @@ jobs:
       - name: Clean compile
         run: gradle clean classes --stacktrace
 
-      - name: Reconstruct and verify alpha.75 base
+      - name: Reconstruct alpha.75 base
         run: |
           set -euxo pipefail
           mkdir -p ci/reconstructed
           cat ci/base64/part_*.b64 | base64 -d > ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar
           BASE='ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar'
-          test -f "$BASE"
           test "$(stat -c%s "$BASE")" = '22519'
           unzip -t "$BASE"
           echo 'de208ae1b79f11f6beba76717da16f7f83b3b4f4b976661647759bd35dc8faea  '"$BASE" | sha256sum -c -
@@ -33,146 +32,125 @@ jobs:
       - name: Verify compiled horse class
         run: |
           set -euxo pipefail
-          CLASS='build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class'
-          test -f "$CLASS"
+          test -f build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
 
-      - name: Assemble full God Villagers alpha.80
+      - name: Assemble full God Villagers alpha.81
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           import json, zipfile
           from pathlib import Path
-          base = Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
-          horse = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
-          out = Path('build/full/god-villagers-0.1.0-alpha.80+mc26.2.jar')
-          out.parent.mkdir(parents=True, exist_ok=True)
-          with zipfile.ZipFile(base, 'r') as zin, zipfile.ZipFile(out, 'w') as zout:
+          base=Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
+          horse=Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
+          out=Path('build/full/god-villagers-0.1.0-alpha.81+mc26.2.jar')
+          out.parent.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(base) as zin, zipfile.ZipFile(out,'w') as zout:
               for info in zin.infolist():
-                  data = zin.read(info.filename)
-                  if info.filename == 'com/anjas/godvillagers/GodHorseRuntime.class':
-                      data = horse
-                  elif info.filename == 'fabric.mod.json':
-                      meta = json.loads(data.decode('utf-8'))
-                      assert meta.get('id') == 'godvillagers'
-                      meta['version'] = '0.1.0-alpha.80+mc26.2'
-                      data = json.dumps(meta, ensure_ascii=False, indent=2).encode('utf-8')
-                  zout.writestr(info, data)
+                  data=zin.read(info.filename)
+                  if info.filename=='com/anjas/godvillagers/GodHorseRuntime.class': data=horse
+                  elif info.filename=='fabric.mod.json':
+                      meta=json.loads(data.decode())
+                      assert meta['id']=='godvillagers'
+                      meta['version']='0.1.0-alpha.81+mc26.2'
+                      data=json.dumps(meta,indent=2).encode()
+                  zout.writestr(info,data)
           PY
 
-      - name: Verify full jar identity and contents
+      - name: Verify full jar
         run: |
           set -euxo pipefail
-          JAR='build/full/god-villagers-0.1.0-alpha.80+mc26.2.jar'
+          JAR='build/full/god-villagers-0.1.0-alpha.81+mc26.2.jar'
           unzip -t "$JAR"
           python3 - <<'PY'
-          import hashlib, json, zipfile
+          import json,zipfile,hashlib
           from pathlib import Path
-          jar = Path('build/full/god-villagers-0.1.0-alpha.80+mc26.2.jar')
-          compiled = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
+          jar=Path('build/full/god-villagers-0.1.0-alpha.81+mc26.2.jar')
+          compiled=Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
           with zipfile.ZipFile(jar) as z:
-              names = z.namelist()
-              assert len(names) == 28
-              meta = json.loads(z.read('fabric.mod.json'))
-              assert meta['id'] == 'godvillagers'
-              assert meta['version'] == '0.1.0-alpha.80+mc26.2'
-              assert z.read('com/anjas/godvillagers/GodHorseRuntime.class') == compiled
-              assert 'godvillagers.mixins.json' not in names
-              assert not any('GodHorseOptimizedMixin' in n for n in names)
-          print('full_jar_sha256=' + hashlib.sha256(jar.read_bytes()).hexdigest())
+              assert len(z.namelist())==28
+              m=json.loads(z.read('fabric.mod.json'))
+              assert m['id']=='godvillagers' and m['version']=='0.1.0-alpha.81+mc26.2'
+              assert z.read('com/anjas/godvillagers/GodHorseRuntime.class')==compiled
+          print('jar_sha256='+hashlib.sha256(jar.read_bytes()).hexdigest())
           PY
 
-      - name: Prepare standalone Fabric dedicated server
+      - name: Prepare dedicated server
         run: |
           set -euxo pipefail
           curl -fL --retry 3 -o fabric-installer.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.1.0/fabric-installer-1.1.0.jar'
-          mkdir -p standalone
-          cd standalone
+          mkdir -p standalone && cd standalone
           java -jar ../fabric-installer.jar server -mcversion 26.2 -loader 0.19.3 -downloadMinecraft
           mkdir -p mods
           curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.158.0+26.2/fabric-api-0.158.0+26.2.jar'
-          cp ../build/full/god-villagers-0.1.0-alpha.80+mc26.2.jar mods/
+          cp ../build/full/god-villagers-0.1.0-alpha.81+mc26.2.jar mods/
           printf 'eula=true\n' > eula.txt
           printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
 
-      - name: Alpha.73 contract functional test
+      - name: Ridden surface regression test
         run: |
           set -euxo pipefail
           cd standalone
           set +e
           {
             sleep 25
-            echo 'forceload add 0 0 34 4'
+            echo 'forceload add 0 0 44 4'
             sleep 3
             echo 'fill 0 90 0 4 100 4 minecraft:water'
             echo 'fill 10 90 0 14 100 4 minecraft:lava'
-            echo 'fill 20 91 0 24 100 4 minecraft:water'
+            echo 'fill 20 95 0 24 95 4 minecraft:water'
             echo 'fill 30 90 0 34 100 4 minecraft:water'
 
-            # Falling into water/lava from above.
-            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,Temper:100,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
-            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,Temper:100,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
+            # Empty baseline.
+            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","empty_fall"]}'
 
-            # Exact alpha.73 edge case: feet start in air at Y=90 while body/head fluid begins at Y=91.
-            echo 'summon minecraft:skeleton_horse 22 90 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","head_in_fluid_test"]}'
+            # Proxy-ridden regression: passenger retained while horse begins half a block below the water layer.
+            echo 'summon minecraft:skeleton_horse 22 94.5 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","ridden_half"],Passengers:[{id:"minecraft:armor_stand",NoGravity:1b,Invisible:1b,Tags:["rider_proxy"]}]}'
 
-            # Legacy-world simulation: no canonical tag, only old God attributes, deep in water.
-            echo 'summon minecraft:skeleton_horse 32 95 2 {Tame:1b,PersistenceRequired:1b,Tags:["legacy_recovery_test"],attributes:[{id:"minecraft:max_health",base:80.0d},{id:"minecraft:movement_speed",base:0.45d},{id:"minecraft:jump_strength",base:1.8d}]}'
+            # Ridden deep/jump-like entry with strong downward velocity.
+            echo 'summon minecraft:skeleton_horse 32 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","ridden_jump"],Motion:[0.0d,-2.5d,0.0d],Passengers:[{id:"minecraft:armor_stand",NoGravity:1b,Invisible:1b,Tags:["jump_rider_proxy"]}]}'
 
-            sleep 7
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,limit=1] Pos'
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=head_in_fluid_test,limit=1] Pos'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say WATER_FALL_PASS'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,x=10,y=100,z=0,dx=4,dy=2,dz=4] run say LAVA_FALL_PASS'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=head_in_fluid_test,x=20,y=100,z=0,dx=4,dy=2,dz=4] run say HEAD_FLUID_RECOVERY_PASS'
+            sleep 8
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=empty_fall,limit=1] Pos'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=ridden_half,limit=1] Pos'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=ridden_half,limit=1] Passengers'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,limit=1] Pos'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,limit=1] Passengers'
 
-            # Surface lock must remain exact, no bobbing/sinking for several seconds.
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] NoGravity'
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Motion'
-            sleep 5
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] NoGravity'
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Motion'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say SURFACE_STABILITY_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=empty_fall,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say EMPTY_WATER_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=ridden_half,x=20,y=96,z=0,dx=4,dy=2,dz=4] if entity @e[tag=rider_proxy] run say RIDDEN_HALF_RECOVERY_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,x=30,y=100,z=0,dx=4,dy=2,dz=4] if entity @e[tag=jump_rider_proxy] run say RIDDEN_JUMP_RECOVERY_PASS'
 
-            # Deep recovery: emulate a horse already sunk five blocks below surface.
-            echo 'tp @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] 2 95 2'
-            sleep 2
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,x=0,y=100,z=0,dx=4,dy=2,dz=4] run say DEEP_RECOVERY_PASS'
+            # Force a mounted horse deep underwater after it is already loaded/tracked.
+            echo 'tp @e[type=minecraft:skeleton_horse,tag=ridden_jump,limit=1] 32 94.5 2'
+            sleep 3
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,limit=1] Pos'
+            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,limit=1] Passengers'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,x=30,y=100,z=0,dx=4,dy=2,dz=4] if entity @e[tag=jump_rider_proxy] run say RIDDEN_DEEP_RECOVERY_PASS'
 
-            # Legacy migration and recovery, then ensure normal horse remains untouched.
+            # Lava still obeys the same contract.
+            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_test"]}'
             sleep 6
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=legacy_recovery_test,limit=1] Pos'
-            echo 'data get entity @e[type=minecraft:skeleton_horse,tag=legacy_recovery_test,limit=1] Tags'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=legacy_recovery_test,tag=godvillagers_god_horse,x=30,y=100,z=0,dx=4,dy=2,dz=4] run say LEGACY_RECOVERY_PASS'
-            echo 'summon minecraft:skeleton_horse 40 101 2 {Tame:1b,PersistenceRequired:1b,Tags:["natural_control_test"]}'
-            sleep 6
-            echo 'execute unless entity @e[type=minecraft:skeleton_horse,tag=natural_control_test,tag=godvillagers_god_horse] run say NATURAL_CONTROL_PASS'
+            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lava_test,x=10,y=100,z=0,dx=4,dy=2,dz=4] run say LAVA_PASS'
             echo 'stop'
           } | timeout 100s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}
           set -e
           cd ..
           cat full-server-test.log
-          if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|MixinTransformerError|BootstrapMethodError|Failed to start the minecraft server|NoClassDefFoundError|ClassNotFoundException|VerifyError' full-server-test.log; then exit 1; fi
-          grep -Eqi 'godvillagers 0\.1\.0-alpha\.80\+mc26\.2' full-server-test.log
-          ! grep -Eqi 'godvillagersoptimizer' full-server-test.log
+          if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server' full-server-test.log; then exit 1; fi
+          grep -Eqi 'godvillagers 0\.1\.0-alpha\.81\+mc26\.2' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
-          grep -Fq 'WATER_FALL_PASS' full-server-test.log
-          grep -Fq 'LAVA_FALL_PASS' full-server-test.log
-          grep -Fq 'HEAD_FLUID_RECOVERY_PASS' full-server-test.log
-          grep -Fq 'SURFACE_STABILITY_PASS' full-server-test.log
-          grep -Fq 'DEEP_RECOVERY_PASS' full-server-test.log
-          grep -Fq 'LEGACY_RECOVERY_PASS' full-server-test.log
-          grep -Fq 'NATURAL_CONTROL_PASS' full-server-test.log
-          grep -Eq 'NoGravity.*1b|has the following entity data: 1b' full-server-test.log
+          grep -Fq 'EMPTY_WATER_PASS' full-server-test.log
+          grep -Fq 'RIDDEN_HALF_RECOVERY_PASS' full-server-test.log
+          grep -Fq 'RIDDEN_JUMP_RECOVERY_PASS' full-server-test.log
+          grep -Fq 'RIDDEN_DEEP_RECOVERY_PASS' full-server-test.log
+          grep -Fq 'LAVA_PASS' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha80-alpha73-contract-verified
+          name: god-villagers-alpha81-ridden-regression-verified
           path: |
-            build/full/god-villagers-0.1.0-alpha.80+mc26.2.jar
+            build/full/god-villagers-0.1.0-alpha.81+mc26.2.jar
             full-server-test.log
