@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(SkeletonHorse.class)
 public abstract class GodHorseOptimizedMixin {
     @Unique private static final String GOD_TAG = "godvillagers_god_horse";
-    @Unique private static final String INIT_TAG = "godvillagers_god_horse_initialized_v76";
+    @Unique private static final String INIT_TAG = "godvillagers_god_horse_initialized_v78";
     @Unique private boolean godvillagers$fluidLocked;
     @Unique private boolean godvillagers$boostedOnFluid;
 
@@ -25,13 +25,11 @@ public abstract class GodHorseOptimizedMixin {
     @Unique private boolean godvillagers$isGodHorse(SkeletonHorse horse) { return horse.entityTags().contains(GOD_TAG); }
     @Unique private static boolean godvillagers$isSupportedFluid(FluidState state) { return state.is(FluidTags.WATER) || state.is(FluidTags.LAVA); }
 
-    @Unique
-    private static void godvillagers$setBase(AttributeInstance attribute, double value) {
+    @Unique private static void godvillagers$setBase(AttributeInstance attribute, double value) {
         if (attribute != null && attribute.getBaseValue() != value) attribute.setBaseValue(value);
     }
 
-    @Unique
-    private void godvillagers$initializeOnce(SkeletonHorse horse) {
+    @Unique private void godvillagers$initializeOnce(SkeletonHorse horse) {
         if (horse.entityTags().contains(INIT_TAG)) return;
         godvillagers$setBase(horse.getAttribute(Attributes.MAX_HEALTH), 80.0D);
         godvillagers$setBase(horse.getAttribute(Attributes.MOVEMENT_SPEED), 0.45D);
@@ -45,68 +43,50 @@ public abstract class GodHorseOptimizedMixin {
         horse.addTag(INIT_TAG);
     }
 
-    @Unique
-    private double godvillagers$fluidSurfaceY(SkeletonHorse horse) {
+    @Unique private double godvillagers$fluidSurfaceY(SkeletonHorse horse) {
         Level level = horse.level();
-        int x = (int) Math.floor(horse.getX());
-        int z = (int) Math.floor(horse.getZ());
-        int y = (int) Math.floor(horse.getY());
-
-        // Only acquire a fluid surface when the horse has actually reached it.
-        // This avoids snapping a high jump down onto water/lava prematurely.
+        int x = (int)Math.floor(horse.getX());
+        int z = (int)Math.floor(horse.getZ());
+        int y = (int)Math.floor(horse.getY());
         int fluidY = Integer.MIN_VALUE;
         for (int dy = 1; dy >= -2; dy--) {
             int py = y + dy;
-            if (godvillagers$isSupportedFluid(level.getFluidState(new BlockPos(x, py, z)))) {
-                fluidY = py;
-                break;
-            }
+            if (godvillagers$isSupportedFluid(level.getFluidState(new BlockPos(x, py, z)))) { fluidY = py; break; }
         }
-
-        // Once locked, tolerate one extra block of separation so vanilla fluid
-        // physics cannot make the horse lose the surface for a single tick.
         if (fluidY == Integer.MIN_VALUE && godvillagers$fluidLocked) {
             int py = y - 3;
             if (godvillagers$isSupportedFluid(level.getFluidState(new BlockPos(x, py, z)))) fluidY = py;
         }
-
         if (fluidY == Integer.MIN_VALUE) return Double.NaN;
-
         int top = fluidY;
         for (int i = 0; i < 32; i++, top++) {
-            if (!godvillagers$isSupportedFluid(level.getFluidState(new BlockPos(x, top, z)))) return (double) top;
+            if (!godvillagers$isSupportedFluid(level.getFluidState(new BlockPos(x, top, z)))) return (double)top;
         }
         return Double.NaN;
     }
 
-    @Unique
-    private void godvillagers$setFluidSpeed(SkeletonHorse horse, boolean onFluid) {
+    @Unique private void godvillagers$setFluidSpeed(SkeletonHorse horse, boolean onFluid) {
         if (godvillagers$boostedOnFluid == onFluid) return;
         godvillagers$boostedOnFluid = onFluid;
         godvillagers$setBase(horse.getAttribute(Attributes.MOVEMENT_SPEED), onFluid ? 1.80D : 0.45D);
     }
 
-    @Inject(method = "tick", at = @At("TAIL"))
+    // MC 26.2 SkeletonHorse no longer declares tick itself. aiStep is inherited through
+    // the living-entity lifecycle and is a stable mapped hook for per-tick horse logic.
+    @Inject(method = "aiStep", at = @At("TAIL"))
     private void godvillagers$optimizedGodHorseTick(CallbackInfo ci) {
         SkeletonHorse horse = godvillagers$self();
         if (!godvillagers$isGodHorse(horse)) return;
-
         godvillagers$initializeOnce(horse);
         horse.clearFire();
-
         double surface = godvillagers$fluidSurfaceY(horse);
         if (Double.isNaN(surface)) {
-            if (godvillagers$fluidLocked) {
-                godvillagers$fluidLocked = false;
-                horse.setNoGravity(false);
-            }
+            if (godvillagers$fluidLocked) { godvillagers$fluidLocked = false; horse.setNoGravity(false); }
             godvillagers$setFluidSpeed(horse, false);
             return;
         }
-
         godvillagers$fluidLocked = true;
         godvillagers$setFluidSpeed(horse, horse.isVehicle());
-
         Vec3 velocity = horse.getDeltaMovement();
         horse.setPos(horse.getX(), surface, horse.getZ());
         horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
