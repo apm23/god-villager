@@ -23,13 +23,19 @@ import java.util.WeakHashMap;
 
 /**
  * Lightweight event-driven runtime for tagged God Skeleton Horses.
- * Alpha.76 fixes fluid support so the horse does not sink when dismounted,
- * while preserving normal jump arcs before landing back on a fluid surface.
+ *
+ * The old gameplay contract is preserved: water and lava act like a solid
+ * floor for the God Horse, with or without a rider. Unlike the original heavy
+ * implementation, this tracks only loaded tagged horses and normally samples
+ * just the blocks around each horse's feet. A bounded downward scan is used
+ * only while the horse is airborne/falling toward a fluid surface.
  */
 public final class GodHorseRuntime {
     private static final String TAG = "godvillagers_god_horse";
     private static final String INIT_TAG = "godvillagers_god_horse_initialized_clean";
     private static final Set<SkeletonHorse> HORSES = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final int FALL_SCAN_DEPTH = 24;
+    private static final int SURFACE_SCAN_UP = 64;
 
     private GodHorseRuntime() {}
 
@@ -88,29 +94,44 @@ public final class GodHorseRuntime {
         return state.is(FluidTags.WATER) || state.is(FluidTags.LAVA);
     }
 
+    private static boolean fluidAt(SkeletonHorse horse, int x, int y, int z) {
+        return fluid(horse.level().getFluidState(new BlockPos(x, y, z)));
+    }
+
+    /** Returns the top Y of a connected fluid column, starting from a known fluid block. */
+    private static double topOfFluidColumn(SkeletonHorse horse, int x, int fluidY, int z) {
+        int top = fluidY;
+        for (int i = 0; i < SURFACE_SCAN_UP; i++) {
+            if (!fluidAt(horse, x, top + 1, z)) return top + 1.0D;
+            top++;
+        }
+        return top + 1.0D;
+    }
+
     /**
-     * Finds the top of the connected fluid column near the horse's feet.
-     * It deliberately does not search far upward/downward, so a horse that is
-     * genuinely airborne is not magnetically snapped to water below it.
+     * Finds a fluid surface beneath/around the horse.
+     * Fast path: the horse is already on/inside fluid, requiring only a few reads.
+     * Slow path: only while falling, scan a bounded distance downward so a jump or
+     * fall into water/lava cannot slip several blocks below the surface.
      */
     private static double surfaceY(SkeletonHorse horse) {
         int x = (int) Math.floor(horse.getX());
         int z = (int) Math.floor(horse.getZ());
         int y = (int) Math.floor(horse.getY());
-        int fluidY = Integer.MIN_VALUE;
 
-        for (int dy = 1; dy >= -3; dy--) {
+        // Normal steady-state: surface directly under feet or horse currently in fluid.
+        for (int dy = 1; dy >= -2; dy--) {
             int py = y + dy;
-            if (fluid(horse.level().getFluidState(new BlockPos(x, py, z)))) {
-                fluidY = py;
-                break;
-            }
+            if (fluidAt(horse, x, py, z)) return topOfFluidColumn(horse, x, py, z);
         }
-        if (fluidY == Integer.MIN_VALUE) return Double.NaN;
 
-        int top = fluidY;
-        for (int i = 0; i < 24; i++, top++) {
-            if (!fluid(horse.level().getFluidState(new BlockPos(x, top, z)))) return (double) top;
+        // While rising, do not magnetically snap to a fluid surface below.
+        if (horse.getDeltaMovement().y > 0.0D) return Double.NaN;
+
+        // Falling/entering fluid: bounded look-down prevents tunnelling through surface.
+        for (int depth = 3; depth <= FALL_SCAN_DEPTH; depth++) {
+            int py = y - depth;
+            if (fluidAt(horse, x, py, z)) return topOfFluidColumn(horse, x, py, z);
         }
         return Double.NaN;
     }
@@ -118,6 +139,15 @@ public final class GodHorseRuntime {
     private static void unlockFluid(SkeletonHorse horse) {
         horse.setNoGravity(false);
         base(horse, Attributes.MOVEMENT_SPEED, 0.45D);
+    }
+
+    private static void lockToSurface(SkeletonHorse horse, double surface) {
+        Vec3 velocity = horse.getDeltaMovement();
+        horse.setPos(horse.getX(), surface, horse.getZ());
+        horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
+        horse.setNoGravity(true);
+        horse.setOnGround(true);
+        base(horse, Attributes.MOVEMENT_SPEED, horse.isVehicle() ? 1.80D : 0.45D);
     }
 
     private static void tickHorse(SkeletonHorse horse) {
@@ -131,22 +161,23 @@ public final class GodHorseRuntime {
         }
 
         Vec3 velocity = horse.getDeltaMovement();
-        double distanceToSurface = horse.getY() - surface;
+        double y = horse.getY();
 
-        // Preserve a real jump: while rising, never snap the horse back down.
-        // Once descending/touching the fluid, lock it cleanly to the surface.
-        if (velocity.y > 0.05D || distanceToSurface > 0.70D) {
+        // Preserve real jumps. As soon as the horse is rising away from the surface,
+        // gravity is restored so the arc remains natural and it can land again.
+        if (velocity.y > 0.05D && y >= surface - 0.05D) {
             unlockFluid(horse);
             return;
         }
 
-        horse.setPos(horse.getX(), surface, horse.getZ());
-        horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
-        horse.setNoGravity(true);
-        horse.setOnGround(true);
+        // Do not pull a horse downward from high in the air. Wait until it actually
+        // reaches/crosses the virtual fluid floor. If vanilla moved it slightly below
+        // the surface in one tick, snap it back immediately before it can sink farther.
+        if (y > surface + 0.45D && velocity.y <= 0.0D) {
+            unlockFluid(horse);
+            return;
+        }
 
-        // Fluid speed boost remains rider-only. An unattended horse stays stable
-        // on the surface but keeps its normal land movement speed.
-        base(horse, Attributes.MOVEMENT_SPEED, horse.isVehicle() ? 1.80D : 0.45D);
+        lockToSurface(horse, surface);
     }
 }
