@@ -106,8 +106,8 @@ jobs:
             sleep 3
             echo 'fill 0 90 0 4 100 4 minecraft:water'
             echo 'fill 10 90 0 14 100 4 minecraft:lava'
-            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
-            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
+            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
+            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
             sleep 7
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] Pos'
             echo 'data get entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,limit=1] Pos'
