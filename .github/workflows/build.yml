@@ -4,55 +4,129 @@ on:
   pull_request:
 
 jobs:
-  build-and-server-test:
+  build-and-full-server-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
 
-      - name: Clean build
-        run: gradle clean build --stacktrace
+      - name: Clean compile
+        run: gradle clean classes --stacktrace
 
-      - name: Verify jars
+      - name: Verify alpha.75 base
         run: |
           set -euxo pipefail
-          test -f build/libs/god-villagers-optimizer-0.1.0-alpha.77+mc26.2.jar
-          unzip -t build/libs/god-villagers-optimizer-0.1.0-alpha.77+mc26.2.jar
+          BASE='ci/base/god-villagers-0.1.0-alpha.75+mc26.2.jar'
+          test -f "$BASE"
+          unzip -t "$BASE"
+          echo 'de208ae1b79f11f6beba76717da16f7f83b3b4f4b976661647759bd35dc8faea  '"$BASE" | sha256sum -c -
+
+      - name: Verify compiled horse class
+        run: |
+          set -euxo pipefail
+          CLASS='build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class'
+          test -f "$CLASS"
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
 
-      - name: Dedicated server smoke test
+      - name: Assemble full God Villagers alpha.77
         run: |
           set -euxo pipefail
-          mkdir -p run
-          printf 'eula=true\n' > run/eula.txt
-          printf 'online-mode=false\nserver-port=25565\n' > run/server.properties
+          python3 - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+
+          base = Path('ci/base/god-villagers-0.1.0-alpha.75+mc26.2.jar')
+          horse = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
+          out = Path('build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar')
+          out.parent.mkdir(parents=True, exist_ok=True)
+
+          with zipfile.ZipFile(base, 'r') as zin, zipfile.ZipFile(out, 'w') as zout:
+              for info in zin.infolist():
+                  data = zin.read(info.filename)
+                  if info.filename == 'com/anjas/godvillagers/GodHorseRuntime.class':
+                      data = horse
+                  elif info.filename == 'fabric.mod.json':
+                      meta = json.loads(data.decode('utf-8'))
+                      if meta.get('id') != 'godvillagers':
+                          raise SystemExit(f"unexpected base mod id: {meta.get('id')}")
+                      meta['version'] = '0.1.0-alpha.77+mc26.2'
+                      data = json.dumps(meta, ensure_ascii=False, indent=2).encode('utf-8')
+                  zout.writestr(info, data)
+          PY
+
+      - name: Verify full jar identity and contents
+        run: |
+          set -euxo pipefail
+          JAR='build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar'
+          unzip -t "$JAR"
+          python3 - <<'PY'
+          import hashlib, json, zipfile
+          from pathlib import Path
+
+          jar = Path('build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar')
+          compiled = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
+          with zipfile.ZipFile(jar) as z:
+              names = z.namelist()
+              assert len(names) == 28, f'unexpected entry count: {len(names)}'
+              meta = json.loads(z.read('fabric.mod.json'))
+              assert meta['id'] == 'godvillagers', meta
+              assert meta['version'] == '0.1.0-alpha.77+mc26.2', meta
+              embedded = z.read('com/anjas/godvillagers/GodHorseRuntime.class')
+              assert embedded == compiled, 'embedded horse class differs from compiler output'
+              assert 'godvillagers.mixins.json' not in names, 'optimizer mixin config leaked into full jar'
+              assert not any('GodHorseOptimizedMixin' in n for n in names), 'optimizer mixin leaked into full jar'
+          print('full_jar_sha256=' + hashlib.sha256(jar.read_bytes()).hexdigest())
+          print('horse_sha256=' + hashlib.sha256(compiled).hexdigest())
+          PY
+
+      - name: Prepare standalone Fabric dedicated server
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 -o fabric-installer.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.1.0/fabric-installer-1.1.0.jar'
+          mkdir -p standalone
+          cd standalone
+          java -jar ../fabric-installer.jar server -mcversion 26.2 -loader 0.19.3 -downloadMinecraft
+          mkdir -p mods
+          curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.158.0+26.2/fabric-api-0.158.0+26.2.jar'
+          cp ../build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar mods/
+          printf 'eula=true\n' > eula.txt
           printf 'online-mode=false\nserver-port=25565\n' > server.properties
+
+      - name: Full jar dedicated server smoke test
+        run: |
+          set -euxo pipefail
+          cd standalone
           set +e
-          timeout 70s gradle runServer --stacktrace > server-test.log 2>&1
+          timeout 70s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=$?
           set -e
-          cat server-test.log
-          if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|MixinTransformerError|BootstrapMethodError|Failed to start the minecraft server' server-test.log; then
-            echo 'Dedicated server reported a fatal mod/server error'
+          cd ..
+          cat full-server-test.log
+          if grep -Eqi 'Mixin apply failed|Could not execute entrypoint|Incompatible mods found|MixinTransformerError|BootstrapMethodError|Failed to start the minecraft server|NoClassDefFoundError|ClassNotFoundException|VerifyError' full-server-test.log; then
+            echo 'Full God Villagers jar reported a fatal mod/server error'
             exit 1
           fi
-          if ! grep -Eqi 'Done \(' server-test.log; then
-            echo 'Dedicated server never reached Done startup state'
+          grep -Eqi 'godvillagers 0\.1\.0-alpha\.77\+mc26\.2' full-server-test.log
+          if grep -Eqi 'godvillagersoptimizer' full-server-test.log; then
+            echo 'Optimizer mod unexpectedly present in standalone full-jar test'
             exit 1
           fi
+          grep -Eqi 'Done \(' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
             exit "$code"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha77-verified
+          name: god-villagers-alpha77-full-verified
           path: |
-            build/libs/*.jar
-            server-test.log
+            build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar
+            full-server-test.log
