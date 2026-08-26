@@ -1,13 +1,15 @@
 {
   "schemaVersion": 1,
-  "id": "godvillagersoptimizer",
+  "id": "godvillagers",
   "version": "${version}",
-  "name": "God Villagers Optimizer Build",
-  "description": "Build-time optimizer classes for God Villagers alpha.74.",
+  "name": "God Villagers & Skeleton Horse",
+  "description": "Clean rebuild of God Villagers for Minecraft 26.2 with lightweight native runtimes.",
   "authors": ["Anjas + OpenAI"],
   "license": "All-Rights-Reserved",
   "environment": "*",
-  "mixins": ["godvillagers.mixins.json"],
+  "entrypoints": {
+    "main": ["com.anjas.godvillagers.GodVillagersMod"]
+  },
   "depends": {
     "fabricloader": ">=0.19.3",
     "fabric-api": ">=0.158.0+26.2",
