@@ -24,22 +24,20 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
- * Alpha.80: alpha.73 fluid-floor behavior, implemented directly in Java.
+ * Alpha.81: alpha.73 fluid-floor behavior using synchronized server teleports.
  *
- * The proven alpha.73 contract is preserved:
- * - if feet are in water/lava, climb upward until they are out of the fluid;
- * - recover from the solid-pool-floor/head-in-fluid edge cases;
- * - when feet are in air and the block exactly below is water/lava, hard-lock
- *   vertical motion to zero and treat the surface as ground;
- * - restore gravity only after leaving both the fluid body and its surface.
- *
- * Unlike alpha.73, this does not execute ~100 commands every server tick.
+ * Alpha.80 reproduced the old block predicates but used Entity#setPos for the
+ * one-block recovery. That is sufficient for an empty horse, but a player-controlled
+ * vehicle can immediately resync its ridden position and undo that raw position write.
+ * Alpha.73 used /tp, whose entity teleport semantics synchronize the vehicle position.
+ * This version keeps the lightweight direct block checks but uses Entity#teleportTo for
+ * recovery moves so mounted horses and their passengers receive a real server teleport.
  */
 public final class GodHorseRuntime {
     private static final String TAG = "godvillagers_god_horse";
     private static final String INIT_TAG = "godvillagers_god_horse_initialized_clean";
     private static final Set<SkeletonHorse> HORSES = Collections.newSetFromMap(new WeakHashMap<>());
-    private static final int MAX_RECOVERY_STEPS = 16; // exact alpha.73 recovery bound
+    private static final int MAX_RECOVERY_STEPS = 16;
     private static final int DISCOVERY_INTERVAL_TICKS = 100;
     private static int discoveryTicker;
 
@@ -148,29 +146,43 @@ public final class GodHorseRuntime {
         return horse.level().getFluidState(new BlockPos(x, y, z));
     }
 
-    private static boolean anyFluidAt(SkeletonHorse horse, int yOffset) {
-        FluidState state = fluidAt(horse, yOffset);
-        return state.is(FluidTags.WATER) || state.is(FluidTags.LAVA);
-    }
-
-    private static void moveUpOne(SkeletonHorse horse) {
-        horse.setPos(horse.getX(), horse.getY() + 1.0D, horse.getZ());
-    }
-
     /**
-     * Direct translation of alpha.73's 16-pass recovery sequence.
-     * Each condition is reevaluated after a move, just like the old commands were.
+     * Same-world synchronized teleport equivalent to alpha.73's "tp @s ~ ~1 ~".
+     * This is intentionally NOT setPos: ridden entities need the server teleport path
+     * so the vehicle/passenger tracking state is updated instead of being overwritten
+     * by the next controlling-passenger movement update.
      */
+    private static boolean teleportUpOne(SkeletonHorse horse) {
+        if (!(horse.level() instanceof ServerLevel level)) return false;
+        Vec3 velocity = horse.getDeltaMovement();
+        boolean moved = horse.teleportTo(
+                level,
+                horse.getX(), horse.getY() + 1.0D, horse.getZ(),
+                Set.of(), horse.getYRot(), horse.getXRot(), false);
+        if (moved) {
+            horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
+            horse.resetFallDistance();
+        }
+        return moved;
+    }
+
+    /** Direct translation of alpha.73's 16-pass recovery sequence. */
     private static void alpha73Recovery(SkeletonHorse horse) {
         for (int i = 0; i < MAX_RECOVERY_STEPS; i++) {
-            if (waterAt(horse, 0)) moveUpOne(horse);
-            if (lavaAt(horse, 0)) moveUpOne(horse);
+            boolean moved = false;
 
-            if (!waterAt(horse, 0) && waterAt(horse, 1) && !waterAt(horse, -1)) moveUpOne(horse);
-            if (!lavaAt(horse, 0) && lavaAt(horse, 1) && !lavaAt(horse, -1)) moveUpOne(horse);
+            if (waterAt(horse, 0)) moved |= teleportUpOne(horse);
+            if (lavaAt(horse, 0)) moved |= teleportUpOne(horse);
 
-            if (!waterAt(horse, 0) && !waterAt(horse, 1) && waterAt(horse, 2) && !waterAt(horse, -1)) moveUpOne(horse);
-            if (!lavaAt(horse, 0) && !lavaAt(horse, 1) && lavaAt(horse, 2) && !lavaAt(horse, -1)) moveUpOne(horse);
+            if (!waterAt(horse, 0) && waterAt(horse, 1) && !waterAt(horse, -1)) moved |= teleportUpOne(horse);
+            if (!lavaAt(horse, 0) && lavaAt(horse, 1) && !lavaAt(horse, -1)) moved |= teleportUpOne(horse);
+
+            if (!waterAt(horse, 0) && !waterAt(horse, 1) && waterAt(horse, 2) && !waterAt(horse, -1)) moved |= teleportUpOne(horse);
+            if (!lavaAt(horse, 0) && !lavaAt(horse, 1) && lavaAt(horse, 2) && !lavaAt(horse, -1)) moved |= teleportUpOne(horse);
+
+            // Unlike the old command loop, stop immediately when no rule moved the horse.
+            // This preserves the result while eliminating the remaining useless passes.
+            if (!moved) break;
         }
     }
 
@@ -186,14 +198,12 @@ public final class GodHorseRuntime {
             horse.setNoGravity(true);
             horse.setOnGround(true);
             horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
+            horse.resetFallDistance();
             base(horse, Attributes.MOVEMENT_SPEED, 1.80D);
             return;
         }
 
         base(horse, Attributes.MOVEMENT_SPEED, 0.45D);
-
-        // Exact alpha.73 gravity restore condition: only away from both the fluid body
-        // and the one-block-below surface.
         if (!waterBelow && !lavaBelow && !feetInWater && !feetInLava) {
             horse.setNoGravity(false);
         }
@@ -202,7 +212,6 @@ public final class GodHorseRuntime {
     private static void tickHorse(SkeletonHorse horse) {
         if (!horse.entityTags().contains(INIT_TAG)) initialize(horse);
         horse.clearFire();
-
         alpha73Recovery(horse);
         alpha73SurfaceLock(horse);
     }
