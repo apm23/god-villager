@@ -21,11 +21,14 @@ jobs:
       - name: Clean compile
         run: gradle clean classes --stacktrace
 
-      - name: Verify alpha.75 base
+      - name: Reconstruct and verify alpha.75 base
         run: |
           set -euxo pipefail
-          BASE='ci/base/god-villagers-0.1.0-alpha.75+mc26.2.jar'
+          mkdir -p ci/reconstructed
+          cat ci/base64/part_*.b64 | base64 -d > ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar
+          BASE='ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar'
           test -f "$BASE"
+          test "$(stat -c%s "$BASE")" = '22519'
           unzip -t "$BASE"
           echo 'de208ae1b79f11f6beba76717da16f7f83b3b4f4b976661647759bd35dc8faea  '"$BASE" | sha256sum -c -
 
@@ -42,12 +45,10 @@ jobs:
           python3 - <<'PY'
           import json, zipfile
           from pathlib import Path
-
-          base = Path('ci/base/god-villagers-0.1.0-alpha.75+mc26.2.jar')
+          base = Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
           horse = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
           out = Path('build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar')
           out.parent.mkdir(parents=True, exist_ok=True)
-
           with zipfile.ZipFile(base, 'r') as zin, zipfile.ZipFile(out, 'w') as zout:
               for info in zin.infolist():
                   data = zin.read(info.filename)
@@ -70,7 +71,6 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, zipfile
           from pathlib import Path
-
           jar = Path('build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar')
           compiled = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
           with zipfile.ZipFile(jar) as z:
