@@ -5,7 +5,7 @@ plugins {
 
 version = project.mod_version + '+mc' + project.minecraft_version
 group = project.maven_group
-base { archivesName = project.archives_base_name }
+base { archivesName = project.archives_base_name + '-optimizer' }
 
 repositories {
     maven { url = 'https://maven.fabricmc.net/' }
@@ -28,36 +28,4 @@ processResources {
     filesMatching('fabric.mod.json') {
         expand 'version': project.version
     }
-}
-
-def baselineJar = layout.buildDirectory.file('baseline/god-villagers-alpha73.jar')
-
-tasks.register('decodeBaseline') {
-    inputs.files(fileTree('baseline') { include 'god-villagers-alpha73.jar.b64.*' })
-    outputs.file(baselineJar)
-    doLast {
-        def parts = fileTree('baseline') { include 'god-villagers-alpha73.jar.b64.*' }.files.sort { it.name }
-        def encoded = parts.collect { it.text.trim() }.join('')
-        def out = baselineJar.get().asFile
-        out.parentFile.mkdirs()
-        out.bytes = Base64.decoder.decode(encoded)
-    }
-}
-
-tasks.named('jar', Jar) {
-    dependsOn tasks.named('decodeBaseline')
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    from({ zipTree(baselineJar.get().asFile) }) {
-        exclude 'fabric.mod.json'
-        exclude 'META-INF/MANIFEST.MF'
-        exclude 'src/**'
-        exclude 'stubs/**'
-        exclude 'stubs*/**'
-        exclude 'classes/**'
-        exclude 'classes*/**'
-        exclude 'com/anjas/godvillagers/GodHorseRuntime.class'
-    }
-
-    archiveClassifier = ''
 }
