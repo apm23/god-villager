@@ -39,7 +39,7 @@ jobs:
           test -f "$CLASS"
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
 
-      - name: Assemble full God Villagers alpha.77
+      - name: Assemble full God Villagers alpha.78
         run: |
           set -euxo pipefail
           python3 - <<'PY'
@@ -47,7 +47,7 @@ jobs:
           from pathlib import Path
           base = Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
           horse = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
-          out = Path('build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar')
+          out = Path('build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar')
           out.parent.mkdir(parents=True, exist_ok=True)
           with zipfile.ZipFile(base, 'r') as zin, zipfile.ZipFile(out, 'w') as zout:
               for info in zin.infolist():
@@ -58,7 +58,7 @@ jobs:
                       meta = json.loads(data.decode('utf-8'))
                       if meta.get('id') != 'godvillagers':
                           raise SystemExit(f"unexpected base mod id: {meta.get('id')}")
-                      meta['version'] = '0.1.0-alpha.77+mc26.2'
+                      meta['version'] = '0.1.0-alpha.78+mc26.2'
                       data = json.dumps(meta, ensure_ascii=False, indent=2).encode('utf-8')
                   zout.writestr(info, data)
           PY
@@ -66,19 +66,19 @@ jobs:
       - name: Verify full jar identity and contents
         run: |
           set -euxo pipefail
-          JAR='build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar'
+          JAR='build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar'
           unzip -t "$JAR"
           python3 - <<'PY'
           import hashlib, json, zipfile
           from pathlib import Path
-          jar = Path('build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar')
+          jar = Path('build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar')
           compiled = Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
           with zipfile.ZipFile(jar) as z:
               names = z.namelist()
               assert len(names) == 28, f'unexpected entry count: {len(names)}'
               meta = json.loads(z.read('fabric.mod.json'))
               assert meta['id'] == 'godvillagers', meta
-              assert meta['version'] == '0.1.0-alpha.77+mc26.2', meta
+              assert meta['version'] == '0.1.0-alpha.78+mc26.2', meta
               embedded = z.read('com/anjas/godvillagers/GodHorseRuntime.class')
               assert embedded == compiled, 'embedded horse class differs from compiler output'
               assert 'godvillagers.mixins.json' not in names, 'optimizer mixin config leaked into full jar'
@@ -96,17 +96,33 @@ jobs:
           java -jar ../fabric-installer.jar server -mcversion 26.2 -loader 0.19.3 -downloadMinecraft
           mkdir -p mods
           curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.158.0+26.2/fabric-api-0.158.0+26.2.jar'
-          cp ../build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar mods/
+          cp ../build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar mods/
           printf 'eula=true\n' > eula.txt
-          printf 'online-mode=false\nserver-port=25565\n' > server.properties
+          printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
 
-      - name: Full jar dedicated server smoke test
+      - name: Full jar startup and God Horse functional test
         run: |
           set -euxo pipefail
           cd standalone
           set +e
-          timeout 70s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
-          code=$?
+          {
+            sleep 25
+            echo 'fill 0 90 0 4 100 4 minecraft:water'
+            echo 'fill 10 90 0 14 100 4 minecraft:lava'
+            echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
+            echo 'summon minecraft:skeleton_horse 12 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lava_fall_test"]}'
+            sleep 7
+            echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_WATER_FALL_PASS'
+            echo 'execute positioned 12 101 2 if entity @e[type=minecraft:skeleton_horse,tag=lava_fall_test,distance=..1.5] run say GOD_HORSE_LAVA_FALL_PASS'
+            echo 'data merge entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] {Motion:[0.0d,1.2d,0.0d]}'
+            sleep 7
+            echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_JUMP_RETURN_PASS'
+            echo 'tp @e[type=minecraft:skeleton_horse,tag=water_fall_test,limit=1] 2 95 2'
+            sleep 3
+            echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_DEEP_RECOVERY_PASS'
+            echo 'stop'
+          } | timeout 75s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
+          code=${PIPESTATUS[1]}
           set -e
           cd ..
           cat full-server-test.log
@@ -114,19 +130,23 @@ jobs:
             echo 'Full God Villagers jar reported a fatal mod/server error'
             exit 1
           fi
-          grep -Eqi 'godvillagers 0\.1\.0-alpha\.77\+mc26\.2' full-server-test.log
+          grep -Eqi 'godvillagers 0\.1\.0-alpha\.78\+mc26\.2' full-server-test.log
           if grep -Eqi 'godvillagersoptimizer' full-server-test.log; then
             echo 'Optimizer mod unexpectedly present in standalone full-jar test'
             exit 1
           fi
           grep -Eqi 'Done \(' full-server-test.log
+          grep -Fq 'GOD_HORSE_WATER_FALL_PASS' full-server-test.log
+          grep -Fq 'GOD_HORSE_LAVA_FALL_PASS' full-server-test.log
+          grep -Fq 'GOD_HORSE_JUMP_RETURN_PASS' full-server-test.log
+          grep -Fq 'GOD_HORSE_DEEP_RECOVERY_PASS' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
             exit "$code"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha77-full-verified
+          name: god-villagers-alpha78-full-function-verified
           path: |
-            build/full/god-villagers-0.1.0-alpha.77+mc26.2.jar
+            build/full/god-villagers-0.1.0-alpha.78+mc26.2.jar
             full-server-test.log
