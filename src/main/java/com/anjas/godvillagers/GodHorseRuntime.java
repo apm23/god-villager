@@ -23,14 +23,24 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-/** Lightweight God Skeleton Horse runtime. */
+/**
+ * Alpha.80: alpha.73 fluid-floor behavior, implemented directly in Java.
+ *
+ * The proven alpha.73 contract is preserved:
+ * - if feet are in water/lava, climb upward until they are out of the fluid;
+ * - recover from the solid-pool-floor/head-in-fluid edge cases;
+ * - when feet are in air and the block exactly below is water/lava, hard-lock
+ *   vertical motion to zero and treat the surface as ground;
+ * - restore gravity only after leaving both the fluid body and its surface.
+ *
+ * Unlike alpha.73, this does not execute ~100 commands every server tick.
+ */
 public final class GodHorseRuntime {
     private static final String TAG = "godvillagers_god_horse";
     private static final String INIT_TAG = "godvillagers_god_horse_initialized_clean";
     private static final Set<SkeletonHorse> HORSES = Collections.newSetFromMap(new WeakHashMap<>());
-    private static final int FALL_SCAN_DEPTH = 24;
-    private static final int SURFACE_SCAN_UP = 64;
-    private static final int DISCOVERY_INTERVAL_TICKS = 100; // rare safety net; normal tracking is event-driven
+    private static final int MAX_RECOVERY_STEPS = 16; // exact alpha.73 recovery bound
+    private static final int DISCOVERY_INTERVAL_TICKS = 100;
     private static int discoveryTicker;
 
     private GodHorseRuntime() {}
@@ -42,8 +52,6 @@ public final class GodHorseRuntime {
             HORSES.removeIf(horse -> horse.isRemoved() || !isRecognizedGodHorse(horse));
             for (SkeletonHorse horse : HORSES) tickHorse(horse);
 
-            // Safety net for legacy worlds / entities that were loaded before their old marker
-            // became visible. Runs only once every 5 seconds, never every tick.
             if (++discoveryTicker >= DISCOVERY_INTERVAL_TICKS) {
                 discoveryTicker = 0;
                 discoverLegacyHorses(server);
@@ -63,7 +71,9 @@ public final class GodHorseRuntime {
     private static void discoverLegacyHorses(MinecraftServer server) {
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
-                if (entity instanceof SkeletonHorse horse && !HORSES.contains(horse) && isRecognizedGodHorse(horse)) {
+                if (entity instanceof SkeletonHorse horse
+                        && !HORSES.contains(horse)
+                        && isRecognizedGodHorse(horse)) {
                     promote(horse);
                 }
             }
@@ -71,7 +81,7 @@ public final class GodHorseRuntime {
     }
 
     private static void promote(SkeletonHorse horse) {
-        horse.addTag(TAG); // canonicalize old horses so future loads take the fast path
+        horse.addTag(TAG);
         HORSES.add(horse);
         initialize(horse);
     }
@@ -89,10 +99,6 @@ public final class GodHorseRuntime {
                 || hasGodHorseSignature(horse);
     }
 
-    /**
-     * Legacy migration signature. Natural skeleton horses do not have these extreme
-     * base attributes. Requiring several values together avoids converting normal horses.
-     */
     private static boolean hasGodHorseSignature(SkeletonHorse horse) {
         return approximately(baseValue(horse, Attributes.MAX_HEALTH), 80.0D, 0.01D)
                 && approximately(baseValue(horse, Attributes.JUMP_STRENGTH), 1.8D, 0.01D)
@@ -127,79 +133,77 @@ public final class GodHorseRuntime {
         horse.addTag(INIT_TAG);
     }
 
-    private static boolean fluid(FluidState state) {
+    private static boolean waterAt(SkeletonHorse horse, int yOffset) {
+        return fluidAt(horse, yOffset).is(FluidTags.WATER);
+    }
+
+    private static boolean lavaAt(SkeletonHorse horse, int yOffset) {
+        return fluidAt(horse, yOffset).is(FluidTags.LAVA);
+    }
+
+    private static FluidState fluidAt(SkeletonHorse horse, int yOffset) {
+        int x = (int) Math.floor(horse.getX());
+        int y = (int) Math.floor(horse.getY()) + yOffset;
+        int z = (int) Math.floor(horse.getZ());
+        return horse.level().getFluidState(new BlockPos(x, y, z));
+    }
+
+    private static boolean anyFluidAt(SkeletonHorse horse, int yOffset) {
+        FluidState state = fluidAt(horse, yOffset);
         return state.is(FluidTags.WATER) || state.is(FluidTags.LAVA);
     }
 
-    private static boolean fluidAt(SkeletonHorse horse, int x, int y, int z) {
-        return fluid(horse.level().getFluidState(new BlockPos(x, y, z)));
+    private static void moveUpOne(SkeletonHorse horse) {
+        horse.setPos(horse.getX(), horse.getY() + 1.0D, horse.getZ());
     }
 
-    private static double topOfFluidColumn(SkeletonHorse horse, int x, int fluidY, int z) {
-        int top = fluidY;
-        for (int i = 0; i < SURFACE_SCAN_UP; i++) {
-            if (!fluidAt(horse, x, top + 1, z)) return top + 1.0D;
-            top++;
+    /**
+     * Direct translation of alpha.73's 16-pass recovery sequence.
+     * Each condition is reevaluated after a move, just like the old commands were.
+     */
+    private static void alpha73Recovery(SkeletonHorse horse) {
+        for (int i = 0; i < MAX_RECOVERY_STEPS; i++) {
+            if (waterAt(horse, 0)) moveUpOne(horse);
+            if (lavaAt(horse, 0)) moveUpOne(horse);
+
+            if (!waterAt(horse, 0) && waterAt(horse, 1) && !waterAt(horse, -1)) moveUpOne(horse);
+            if (!lavaAt(horse, 0) && lavaAt(horse, 1) && !lavaAt(horse, -1)) moveUpOne(horse);
+
+            if (!waterAt(horse, 0) && !waterAt(horse, 1) && waterAt(horse, 2) && !waterAt(horse, -1)) moveUpOne(horse);
+            if (!lavaAt(horse, 0) && !lavaAt(horse, 1) && lavaAt(horse, 2) && !lavaAt(horse, -1)) moveUpOne(horse);
         }
-        return top + 1.0D;
     }
 
-    private static double surfaceY(SkeletonHorse horse) {
-        int x = (int) Math.floor(horse.getX());
-        int z = (int) Math.floor(horse.getZ());
-        int y = (int) Math.floor(horse.getY());
+    private static void alpha73SurfaceLock(SkeletonHorse horse) {
+        boolean feetInWater = waterAt(horse, 0);
+        boolean feetInLava = lavaAt(horse, 0);
+        boolean waterBelow = waterAt(horse, -1);
+        boolean lavaBelow = lavaAt(horse, -1);
+        boolean onFluidSurface = (!feetInWater && waterBelow) || (!feetInLava && lavaBelow);
 
-        for (int dy = 1; dy >= -2; dy--) {
-            int py = y + dy;
-            if (fluidAt(horse, x, py, z)) return topOfFluidColumn(horse, x, py, z);
+        if (onFluidSurface) {
+            Vec3 velocity = horse.getDeltaMovement();
+            horse.setNoGravity(true);
+            horse.setOnGround(true);
+            horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
+            base(horse, Attributes.MOVEMENT_SPEED, 1.80D);
+            return;
         }
 
-        if (horse.getDeltaMovement().y > 0.0D) return Double.NaN;
-
-        for (int depth = 3; depth <= FALL_SCAN_DEPTH; depth++) {
-            int py = y - depth;
-            if (fluidAt(horse, x, py, z)) return topOfFluidColumn(horse, x, py, z);
-        }
-        return Double.NaN;
-    }
-
-    private static void unlockFluid(SkeletonHorse horse) {
-        horse.setNoGravity(false);
         base(horse, Attributes.MOVEMENT_SPEED, 0.45D);
-    }
 
-    private static void lockToSurface(SkeletonHorse horse, double surface) {
-        Vec3 velocity = horse.getDeltaMovement();
-        horse.setPos(horse.getX(), surface, horse.getZ());
-        horse.setDeltaMovement(velocity.x, 0.0D, velocity.z);
-        horse.setNoGravity(true);
-        horse.setOnGround(true);
-        base(horse, Attributes.MOVEMENT_SPEED, horse.isVehicle() ? 1.80D : 0.45D);
+        // Exact alpha.73 gravity restore condition: only away from both the fluid body
+        // and the one-block-below surface.
+        if (!waterBelow && !lavaBelow && !feetInWater && !feetInLava) {
+            horse.setNoGravity(false);
+        }
     }
 
     private static void tickHorse(SkeletonHorse horse) {
         if (!horse.entityTags().contains(INIT_TAG)) initialize(horse);
         horse.clearFire();
 
-        double surface = surfaceY(horse);
-        if (Double.isNaN(surface)) {
-            unlockFluid(horse);
-            return;
-        }
-
-        Vec3 velocity = horse.getDeltaMovement();
-        double y = horse.getY();
-
-        if (velocity.y > 0.05D && y >= surface - 0.05D) {
-            unlockFluid(horse);
-            return;
-        }
-
-        if (y > surface + 0.45D && velocity.y <= 0.0D) {
-            unlockFluid(horse);
-            return;
-        }
-
-        lockToSurface(horse, surface);
+        alpha73Recovery(horse);
+        alpha73SurfaceLock(horse);
     }
 }
