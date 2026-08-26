@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "com.anjas.godvillagers.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": ["GodHorseOptimizedMixin", "StormcallAnvilMixin"],
+  "injectors": {"defaultRequire": 1}
+}
