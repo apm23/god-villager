@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "godvillagersoptimizer",
+  "version": "${version}",
+  "name": "God Villagers Optimizer Build",
+  "description": "Build-time optimizer classes for God Villagers alpha.74.",
+  "authors": ["Anjas + OpenAI"],
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "mixins": ["godvillagers.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": ">=0.158.0+26.2",
+    "minecraft": "~26.2",
+    "java": ">=25"
+  }
+}
