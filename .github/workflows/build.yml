@@ -107,6 +107,8 @@ jobs:
           set +e
           {
             sleep 25
+            echo 'forceload add 0 0 14 4'
+            sleep 3
             echo 'fill 0 90 0 4 100 4 minecraft:water'
             echo 'fill 10 90 0 14 100 4 minecraft:lava'
             echo 'summon minecraft:skeleton_horse 2 108 2 {Tame:1b,NoAI:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","water_fall_test"]}'
@@ -121,7 +123,7 @@ jobs:
             sleep 3
             echo 'execute positioned 2 101 2 if entity @e[type=minecraft:skeleton_horse,tag=water_fall_test,distance=..1.5] run say GOD_HORSE_DEEP_RECOVERY_PASS'
             echo 'stop'
-          } | timeout 75s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
+          } | timeout 80s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}
           set -e
           cd ..
