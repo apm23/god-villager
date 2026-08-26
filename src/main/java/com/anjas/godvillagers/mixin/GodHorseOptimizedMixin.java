@@ -22,7 +22,7 @@ public abstract class GodHorseOptimizedMixin {
     @Unique private boolean godvillagers$boostedOnFluid;
 
     @Unique private SkeletonHorse godvillagers$self() { return (SkeletonHorse) (Object) this; }
-    @Unique private boolean godvillagers$isGodHorse(SkeletonHorse horse) { return horse.getTags().contains(GOD_TAG); }
+    @Unique private boolean godvillagers$isGodHorse(SkeletonHorse horse) { return horse.entityTags().contains(GOD_TAG); }
     @Unique private static boolean godvillagers$isSupportedFluid(FluidState state) { return state.is(FluidTags.WATER) || state.is(FluidTags.LAVA); }
 
     @Unique
@@ -32,7 +32,7 @@ public abstract class GodHorseOptimizedMixin {
 
     @Unique
     private void godvillagers$initializeOnce(SkeletonHorse horse) {
-        if (horse.getTags().contains(INIT_TAG)) return;
+        if (horse.entityTags().contains(INIT_TAG)) return;
         godvillagers$setBase(horse.getAttribute(Attributes.MAX_HEALTH), 80.0D);
         godvillagers$setBase(horse.getAttribute(Attributes.MOVEMENT_SPEED), 0.45D);
         godvillagers$setBase(horse.getAttribute(Attributes.JUMP_STRENGTH), 1.8D);
