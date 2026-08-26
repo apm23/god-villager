@@ -47,7 +47,7 @@ public final class GodHorseRuntime {
     }
 
     private static boolean isGodHorse(SkeletonHorse horse) {
-        return horse.getTags().contains(TAG);
+        return horse.entityTags().contains(TAG);
     }
 
     private static void base(SkeletonHorse horse, net.minecraft.core.Holder<net.minecraft.world.entity.ai.attributes.Attribute> attribute, double value) {
@@ -95,7 +95,7 @@ public final class GodHorseRuntime {
     }
 
     private static void tickHorse(SkeletonHorse horse) {
-        if (!horse.getTags().contains(INIT_TAG)) initialize(horse);
+        if (!horse.entityTags().contains(INIT_TAG)) initialize(horse);
         horse.clearFire();
 
         if (!horse.isVehicle()) {
