@@ -2,6 +2,6 @@
   "required": true,
   "package": "com.anjas.godvillagers.mixin",
   "compatibilityLevel": "JAVA_25",
-  "mixins": ["GodHorseOptimizedMixin", "StormcallAnvilMixin"],
+  "mixins": ["GodHorseOptimizedMixin", "GodHorseDamageMixin", "StormcallAnvilMixin"],
   "injectors": {"defaultRequire": 1}
 }
