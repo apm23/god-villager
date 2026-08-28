@@ -101,15 +101,15 @@ jobs:
             sleep 25
             echo 'forceload add 0 0 44 4'
             sleep 3
-            # Direct command parser validation for exact new books and no-glow/no-visible-name villager state.
-            echo 'summon minecraft:villager 40 100 2 {CustomName:{text:"Alpha82Test"},CustomNameVisible:0b,Glowing:0b,PersistenceRequired:1b,VillagerData:{type:plains,profession:librarian,level:5},Offers:{Recipes:[{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:"God Fishing Rod",color:"aqua",bold:true,italic:false},stored_enchantments:{luck_of_the_sea:6,lure:10,unbreaking:3,mending:2}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f},{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:"God Shield",color:"dark_red",bold:true,italic:false},stored_enchantments:{unbreaking:4,mending:3,thorns:5}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}]}}'
+            # Build a solid test platform first so the villager cannot die from fall damage.
+            echo 'fill 38 99 0 42 99 4 minecraft:stone'
+            echo 'summon minecraft:villager 40 100 2 {CustomName:{text:"Alpha82Test"},CustomNameVisible:0b,Glowing:0b,PersistenceRequired:1b,Invulnerable:1b,VillagerData:{type:plains,profession:librarian,level:5},Offers:{Recipes:[{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:"God Fishing Rod",color:"aqua",bold:true,italic:false},stored_enchantments:{luck_of_the_sea:6,lure:10,unbreaking:3,mending:2}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f},{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:"God Shield",color:"dark_red",bold:true,italic:false},stored_enchantments:{unbreaking:4,mending:3,thorns:5}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}]}}'
             sleep 2
             echo 'data get entity @e[type=minecraft:villager,x=39,y=99,z=1,dx=3,dy=3,dz=3,limit=1] Glowing'
             echo 'data get entity @e[type=minecraft:villager,x=39,y=99,z=1,dx=3,dy=3,dz=3,limit=1] CustomNameVisible'
             echo 'data get entity @e[type=minecraft:villager,x=39,y=99,z=1,dx=3,dy=3,dz=3,limit=1] Offers'
             echo 'execute if entity @e[type=minecraft:villager,x=39,y=99,z=1,dx=3,dy=3,dz=3,nbt={Glowing:0b,CustomNameVisible:0b}] run say VILLAGER_NO_GLOW_PASS'
 
-            # Preserve alpha.81 mounted horse regression.
             echo 'fill 20 95 0 24 95 4 minecraft:water'
             echo 'fill 30 90 0 34 100 4 minecraft:water'
             echo 'summon minecraft:skeleton_horse 22 94.5 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","ridden_half"],Passengers:[{id:"minecraft:armor_stand",NoGravity:1b,Invisible:1b,Tags:["rider_proxy"]}]}'
