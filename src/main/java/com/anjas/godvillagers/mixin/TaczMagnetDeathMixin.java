@@ -85,10 +85,10 @@ public abstract class TaczMagnetDeathMixin {
                 entity.discard();
                 continue;
             }
-            // Direct inventory ownership prevents another nearby player from stealing a
-            // long-range sniper reward during the teleport/pickup gap. Overflow is still
-            // delivered at the fatal shooter's feet with normal vanilla pickup behavior.
-            if (shooter.getInventory().add(reward)) {
+            // Inventory.add mutates the supplied stack. Whatever remains after the call is
+            // the exact overflow and must be preserved instead of restoring the full stack.
+            shooter.getInventory().add(reward);
+            if (reward.isEmpty()) {
                 entity.discard();
             } else {
                 entity.setItem(reward);
