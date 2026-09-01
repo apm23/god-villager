@@ -25,7 +25,6 @@ public final class TaczEnchantRuntime {
     public static final float ABSORPTION_RATIO = 0.50F;
     public static final float MAX_ABSORPTION_HEALTH = 4.0F;
     private static final Map<UUID, UUID> MAGNET_FATAL_SHOOTERS = new ConcurrentHashMap<>();
-    private static final Map<UUID, UUID> MAGNET_PENDING_REWARDS = new ConcurrentHashMap<>();
 
     private TaczEnchantRuntime() {}
 
@@ -56,16 +55,6 @@ public final class TaczEnchantRuntime {
     public static UUID consumeMagnetFatalShooter(LivingEntity victim) {
         if (victim == null || sharedBossReward(victim)) return null;
         return MAGNET_FATAL_SHOOTERS.remove(victim.getUUID());
-    }
-
-    public static void markPendingMagnetReward(LivingEntity victim, ServerPlayer shooter) {
-        if (victim == null || shooter == null || sharedBossReward(victim)) return;
-        MAGNET_PENDING_REWARDS.put(victim.getUUID(), shooter.getUUID());
-    }
-
-    public static UUID consumePendingMagnetReward(LivingEntity victim) {
-        if (victim == null) return null;
-        return MAGNET_PENDING_REWARDS.remove(victim.getUUID());
     }
 
     static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
