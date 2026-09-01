@@ -29,18 +29,23 @@ public final class TaczEnchantRuntime {
         return damage * LIFE_STEAL_RATIOS[Math.min(level, MAX_LIFE_STEAL_LEVEL)];
     }
 
+    public static float actualDamage(float healthBefore, float healthAfter) {
+        if (!Float.isFinite(healthBefore) || !Float.isFinite(healthAfter)) return 0.0F;
+        return Math.max(0.0F, healthBefore - Math.max(0.0F, healthAfter));
+    }
+
     public static float absorptionForOverflow(float unusedHealing) {
         return Math.max(0.0F, unusedHealing) * ABSORPTION_RATIO;
     }
 
-    public static void afterSuccessfulDamage(LivingEntity victim, DamageSource source, float requestedDamage) {
-        if (victim == null || source == null || requestedDamage <= 0.0F) return;
+    public static void afterSuccessfulDamage(LivingEntity victim, DamageSource source, float actualDamage) {
+        if (victim == null || source == null || actualDamage <= 0.0F) return;
         ServerPlayer shooter = exactShooter(source);
         if (shooter == null) return;
         ItemStack gun = shooter.getMainHandItem();
         if (!looksLikeTaczGun(gun)) return;
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
-        if (lifeSteal > 0) applyLifeSteal(shooter, requestedDamage, lifeSteal);
+        if (lifeSteal > 0) applyLifeSteal(shooter, actualDamage, lifeSteal);
     }
 
     public static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
