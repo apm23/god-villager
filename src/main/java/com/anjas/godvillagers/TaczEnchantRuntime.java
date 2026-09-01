@@ -42,7 +42,24 @@ public final class TaczEnchantRuntime {
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
         int magnet = enchantLevel(gun, MAGNET_ID);
         if (lifeSteal <= 0 && magnet <= 0) return;
-        // Effect application follows after this ownership + gun + enchant gate is verified.
+
+        if (lifeSteal > 0) applyLifeSteal(shooter, requestedDamage, lifeSteal);
+        // Magnet remains kill-only and will be applied only after fatal-shot ownership is proven.
+    }
+
+    static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
+        float budget = healingForDamage(bulletDamage, level);
+        if (budget <= 0.0F) return;
+
+        float missing = Math.max(0.0F, shooter.getMaxHealth() - shooter.getHealth());
+        float directHeal = Math.min(missing, budget);
+        if (directHeal > 0.0F) shooter.heal(directHeal);
+
+        float overflow = budget - directHeal;
+        if (overflow <= 0.0F) return;
+        float extra = absorptionForOverflow(overflow);
+        float current = shooter.getAbsorptionAmount();
+        shooter.setAbsorptionAmount(Math.min(MAX_ABSORPTION_HEALTH, current + extra));
     }
 
     static ServerPlayer exactShooter(DamageSource source) {
@@ -67,7 +84,6 @@ public final class TaczEnchantRuntime {
         ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
         for (Holder<Enchantment> holder : enchantments.keySet()) {
             var key = holder.unwrapKey();
-            // Yarn/Mojmap 26.2 exposes the ResourceKey identifier as identifier().
             if (key.isPresent() && key.get().identifier().toString().equals(wantedId)) {
                 return enchantments.getLevel(holder);
             }
