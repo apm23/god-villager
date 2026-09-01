@@ -25,6 +25,7 @@ public final class TaczEnchantRuntime {
     public static final float ABSORPTION_RATIO = 0.50F;
     public static final float MAX_ABSORPTION_HEALTH = 4.0F;
     private static final Map<UUID, UUID> MAGNET_FATAL_SHOOTERS = new ConcurrentHashMap<>();
+    private static final Map<UUID, UUID> MAGNET_PENDING_REWARDS = new ConcurrentHashMap<>();
 
     private TaczEnchantRuntime() {}
 
@@ -46,20 +47,25 @@ public final class TaczEnchantRuntime {
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
         int magnet = enchantLevel(gun, MAGNET_ID);
         if (lifeSteal <= 0 && magnet <= 0) return;
-
         if (lifeSteal > 0) applyLifeSteal(shooter, requestedDamage, lifeSteal);
-
-        // Only the TACZ hit that actually leaves the victim dead may claim Magnet.
-        // A previous contributor never owns the reward if another player lands the kill.
         if (magnet > 0 && victim.isDeadOrDying() && !sharedBossReward(victim)) {
             MAGNET_FATAL_SHOOTERS.put(victim.getUUID(), shooter.getUUID());
         }
     }
 
-    /** Consume once from the eventual death/drop bridge; never falls back to nearest player. */
     public static UUID consumeMagnetFatalShooter(LivingEntity victim) {
         if (victim == null || sharedBossReward(victim)) return null;
         return MAGNET_FATAL_SHOOTERS.remove(victim.getUUID());
+    }
+
+    public static void markPendingMagnetReward(LivingEntity victim, ServerPlayer shooter) {
+        if (victim == null || shooter == null || sharedBossReward(victim)) return;
+        MAGNET_PENDING_REWARDS.put(victim.getUUID(), shooter.getUUID());
+    }
+
+    public static UUID consumePendingMagnetReward(LivingEntity victim) {
+        if (victim == null) return null;
+        return MAGNET_PENDING_REWARDS.remove(victim.getUUID());
     }
 
     static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
@@ -70,8 +76,7 @@ public final class TaczEnchantRuntime {
         if (directHeal > 0.0F) shooter.heal(directHeal);
         float overflow = budget - directHeal;
         if (overflow <= 0.0F) return;
-        float extra = absorptionForOverflow(overflow);
-        shooter.setAbsorptionAmount(Math.min(MAX_ABSORPTION_HEALTH, shooter.getAbsorptionAmount() + extra));
+        shooter.setAbsorptionAmount(Math.min(MAX_ABSORPTION_HEALTH, shooter.getAbsorptionAmount() + absorptionForOverflow(overflow)));
     }
 
     static ServerPlayer exactShooter(DamageSource source) {
