@@ -27,6 +27,20 @@ class TaczEnchantRuntimeTest {
     }
 
     @Test
+    void actualDamageUsesVictimHealthDeltaAndCapsLethalOverkill() {
+        assertEquals(3.0F, TaczEnchantRuntime.actualDamage(10.0F, 7.0F), EPS);
+        assertEquals(4.0F, TaczEnchantRuntime.actualDamage(4.0F, 0.0F), EPS);
+        assertEquals(4.0F, TaczEnchantRuntime.actualDamage(4.0F, -20.0F), EPS);
+        assertEquals(0.0F, TaczEnchantRuntime.actualDamage(4.0F, 5.0F), EPS);
+    }
+
+    @Test
+    void invalidHealthSnapshotsCannotCreateHealingBudget() {
+        assertEquals(0.0F, TaczEnchantRuntime.actualDamage(Float.NaN, 0.0F), EPS);
+        assertEquals(0.0F, TaczEnchantRuntime.actualDamage(10.0F, Float.POSITIVE_INFINITY), EPS);
+    }
+
+    @Test
     void overflowConvertsToHalfAbsorptionBudget() {
         assertEquals(0.50F, TaczEnchantRuntime.absorptionForOverflow(1.0F), EPS);
         assertEquals(0.0F, TaczEnchantRuntime.absorptionForOverflow(-1.0F), EPS);
