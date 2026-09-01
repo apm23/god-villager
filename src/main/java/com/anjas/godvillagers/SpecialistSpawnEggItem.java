@@ -15,6 +15,10 @@ import java.util.List;
 public final class SpecialistSpawnEggItem extends Item {
     private static final String GOD_FISHING_ROD_BOOK = "{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:\"God Fishing Rod\",color:\"aqua\",bold:true,italic:false},stored_enchantments:{luck_of_the_sea:6,lure:10,unbreaking:3,mending:2}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}";
     private static final String GOD_SHIELD_BOOK = "{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:\"God Shield\",color:\"dark_red\",bold:true,italic:false},stored_enchantments:{unbreaking:4,mending:3,thorns:5}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}";
+    private static final String MAGNET_I_BOOK = bookTrade("Magnet I", "godvillagers:magnet:1", 32);
+    private static final String LIFE_STEAL_I_BOOK = bookTrade("Life Steal I", "godvillagers:life_steal:1", 32);
+    private static final String LIFE_STEAL_II_BOOK = bookTrade("Life Steal II", "godvillagers:life_steal:2", 40);
+    private static final String LIFE_STEAL_III_BOOK = bookTrade("Life Steal III", "godvillagers:life_steal:3", 48);
     private static final String LOOTING_III_BOOK = bookTrade("Looting III", "looting:3", 24);
     private static final String LOOTING_IV_BOOK = bookTrade("Looting IV", "looting:4", 32);
     private static final String LOOTING_V_BOOK = bookTrade("Looting V", "looting:5", 40);
@@ -46,16 +50,20 @@ public final class SpecialistSpawnEggItem extends Item {
             .replace("CustomNameVisible:1b,", "CustomNameVisible:0b,");
 
         if (result.contains("Tool Sage")) result = appendTrade(result, GOD_FISHING_ROD_BOOK);
-        if (result.contains("Arms Sage")) result = appendTrade(result, GOD_SHIELD_BOOK);
+        if (result.contains("Arms Sage")) {
+            result = appendTrade(result, GOD_SHIELD_BOOK);
+            result = appendTrade(result, MAGNET_I_BOOK);
+            result = appendTrade(result, LIFE_STEAL_I_BOOK);
+            result = appendTrade(result, LIFE_STEAL_II_BOOK);
+            result = appendTrade(result, LIFE_STEAL_III_BOOK);
+        }
 
-        // Loot specialist: keep vanilla/existing books and add explicit Looting III-V choices.
         if (isLootSpecialist(result)) {
             result = appendTrade(result, LOOTING_III_BOOK);
             result = appendTrade(result, LOOTING_IV_BOOK);
             result = appendTrade(result, LOOTING_V_BOOK);
         }
 
-        // Clerk: replace old string/arrow offers, then add the requested deterministic economy trades.
         if (isClerkSpecialist(result)) {
             result = removeTradesBuying(result, "string", "arrow");
             result = appendTrade(result, CLERK_STRING);
