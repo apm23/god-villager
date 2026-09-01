@@ -51,10 +51,10 @@ jobs:
           replacements={
             'com/anjas/godvillagers/GodHorseRuntime.class': Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),
             'com/anjas/godvillagers/SpecialistSpawnEggItem.class': Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes(),
-            'godvillagers.mixins.json': Path('build/resources/main/godvillagers.mixins.json').read_bytes(),
           }
           extra={
             'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class': Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),
+            'godvillagers.mixins.json': Path('build/resources/main/godvillagers.mixins.json').read_bytes(),
           }
           out=Path('build/full/god-villagers-0.1.0-alpha.83+mc26.2.jar')
           out.parent.mkdir(parents=True,exist_ok=True)
