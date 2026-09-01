@@ -42,12 +42,11 @@ public final class TaczEnchantRuntime {
         ServerPlayer shooter = exactShooter(source);
         if (shooter == null) return;
 
-        // TACZ 26.2 may not expose a persistent bullet entity through DamageSource.
-        // The authoritative server shooter holding a TACZ gun is the cheap fallback;
-        // projectile/source hints are accepted when available but are not required.
+        // TACZ 26.2 can report the owning player without retaining a bullet entity.
+        // A server-authoritative shooter holding a TACZ item is therefore sufficient;
+        // this avoids reflection, TACZ class linking and any per-tick scanning.
         ItemStack gun = shooter.getMainHandItem();
         if (!looksLikeTaczGun(gun)) return;
-        if (!looksLikeTaczDamage(source) && source.getDirectEntity() == shooter) return;
 
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
         int magnet = enchantLevel(gun, MAGNET_ID);
@@ -79,16 +78,6 @@ public final class TaczEnchantRuntime {
         if (owner instanceof ServerPlayer player) return player;
         Entity direct = source.getDirectEntity();
         return direct instanceof ServerPlayer player ? player : null;
-    }
-
-    static boolean looksLikeTaczDamage(DamageSource source) {
-        Entity direct = source.getDirectEntity();
-        if (direct != null) {
-            String name = direct.getClass().getName().toLowerCase(Locale.ROOT);
-            if (name.contains("tacz") || name.contains("bullet") || name.contains("projectile")) return true;
-        }
-        String text = source.toString().toLowerCase(Locale.ROOT);
-        return text.contains("tacz") || text.contains("bullet") || text.contains("gun") || text.contains("shot");
     }
 
     static boolean looksLikeTaczGun(ItemStack stack) {
