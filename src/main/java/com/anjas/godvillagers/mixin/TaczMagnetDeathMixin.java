@@ -76,20 +76,31 @@ public abstract class TaczMagnetDeathMixin {
             return;
         }
 
-        // Scan only the tiny death-site box. Shooter distance is intentionally irrelevant,
-        // so scoped sniper kills work exactly like close-range kills without a huge search.
         AABB box = godvillagers$rewardBox();
         for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, box)) {
-            if (godvillagers$itemsBefore == null || !godvillagers$itemsBefore.contains(entity.getId())) {
+            if (godvillagers$itemsBefore == null || godvillagers$itemsBefore.contains(entity.getId())) continue;
+            godvillagers$itemsBefore.add(entity.getId());
+            ItemStack reward = entity.getItem().copy();
+            if (reward.isEmpty()) {
+                entity.discard();
+                continue;
+            }
+            // Direct inventory ownership prevents another nearby player from stealing a
+            // long-range sniper reward during the teleport/pickup gap. Overflow is still
+            // delivered at the fatal shooter's feet with normal vanilla pickup behavior.
+            if (shooter.getInventory().add(reward)) {
+                entity.discard();
+            } else {
+                entity.setItem(reward);
                 entity.teleportTo(shooter.getX(), shooter.getY(), shooter.getZ());
-                godvillagers$itemsBefore.add(entity.getId());
+                entity.setPickUpDelay(0);
             }
         }
         for (ExperienceOrb orb : level.getEntitiesOfClass(ExperienceOrb.class, box)) {
-            if (godvillagers$xpBefore == null || !godvillagers$xpBefore.contains(orb.getId())) {
-                orb.teleportTo(shooter.getX(), shooter.getY(), shooter.getZ());
-                godvillagers$xpBefore.add(orb.getId());
-            }
+            if (godvillagers$xpBefore == null || godvillagers$xpBefore.contains(orb.getId())) continue;
+            godvillagers$xpBefore.add(orb.getId());
+            shooter.giveExperiencePoints(orb.getValue());
+            orb.discard();
         }
     }
 
