@@ -36,9 +36,11 @@ jobs:
           test -f build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class
           test -f build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class
           test -f build/resources/main/godvillagers.mixins.json
+          test -f build/resources/main/data/godvillagers/enchantment/magnet.json
+          test -f build/resources/main/data/godvillagers/enchantment/life_steal.json
           for level in 4 5 6 7 8 9 10; do test -f "build/resources/main/data/godvillagers/recipe/firework_flight_${level}.json"; done
-          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
-          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.SpecialistSpawnEggItem | grep 'major version: 69'
+          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers/GodHorseRuntime | grep 'major version: 69'
+          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers/SpecialistSpawnEggItem | grep 'major version: 69'
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin.GodHorseLeashMixin | grep 'major version: 69'
 
       - name: Assemble full God Villagers alpha.84
@@ -74,7 +76,7 @@ jobs:
                   if name not in names: zout.writestr(name,data)
           PY
 
-      - name: Verify full jar, trades, and Flight IV-X recipes
+      - name: Verify full jar, trades, enchantments, and Flight IV-X recipes
         run: |
           set -euxo pipefail
           JAR='build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar'
@@ -89,8 +91,14 @@ jobs:
               assert z.read('com/anjas/godvillagers/SpecialistSpawnEggItem.class')==Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()
               assert b'GodHorseLeashMixin' in z.read('godvillagers.mixins.json')
               trade_class=z.read('com/anjas/godvillagers/SpecialistSpawnEggItem.class')
-              for token in (b'looting:3', b'looting:4', b'looting:5'):
+              for token in (b'looting:3', b'looting:4', b'looting:5', b'godvillagers:magnet:1', b'godvillagers:life_steal:1', b'godvillagers:life_steal:2', b'godvillagers:life_steal:3'):
                   assert token in trade_class, f'missing trade constant {token!r}'
+              magnet=json.loads(z.read('data/godvillagers/enchantment/magnet.json'))
+              life=json.loads(z.read('data/godvillagers/enchantment/life_steal.json'))
+              assert magnet['max_level']==1 and magnet['supported_items']=='#minecraft:enchantable/weapon'
+              assert life['max_level']==3 and life['supported_items']=='#minecraft:enchantable/weapon'
+              for ench in (magnet,life):
+                  assert ench['slots']==['mainhand']
               for level in range(4,11):
                   name=f'data/godvillagers/recipe/firework_flight_{level}.json'
                   r=json.loads(z.read(name))
@@ -117,7 +125,7 @@ jobs:
           printf 'eula=true\n' > eula.txt
           printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
 
-      - name: Alpha.84 server recipe-load and horse regression
+      - name: Alpha.84 server enchantment-load and horse regression
         run: |
           set -euxo pipefail
           cd standalone
@@ -142,7 +150,7 @@ jobs:
           set -e
           cd ..
           cat full-server-test.log
-          if grep -Eqi 'Parsing error loading recipe|Failed to parse|Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server' full-server-test.log; then exit 1; fi
+          if grep -Eqi 'Parsing error loading recipe|Failed to parse|Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' full-server-test.log; then exit 1; fi
           grep -Eqi 'godvillagers 0\.1\.0-alpha\.84\+mc26\.2' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
           grep -Fq 'GOD_HORSE_LEAD_TARGET_PRESENT' full-server-test.log
@@ -152,7 +160,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha84-firework-trades-horse-verified
+          name: god-villagers-alpha84-enchants-trades-horse-verified
           path: |
             build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar
             full-server-test.log
