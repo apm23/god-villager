@@ -1,13 +1,13 @@
 package com.anjas.godvillagers;
 
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 
 /**
  * Runtime constants and balancing rules for the optional TACZ enchant integration.
- * No TACZ class is referenced directly: detection is based on the runtime damage
- * source/entity identity, keeping God Villagers safe when TACZ is absent.
+ * No TACZ class is referenced directly, keeping God Villagers safe when TACZ is absent.
  */
 public final class TaczEnchantRuntime {
     public static final String MAGNET_ID = "godvillagers:magnet";
@@ -22,23 +22,26 @@ public final class TaczEnchantRuntime {
 
     public static float healingForDamage(float actualBulletDamage, int level) {
         if (actualBulletDamage <= 0.0F || level <= 0) return 0.0F;
-        int safeLevel = Math.min(level, MAX_LIFE_STEAL_LEVEL);
-        return actualBulletDamage * LIFE_STEAL_RATIOS[safeLevel];
+        return actualBulletDamage * LIFE_STEAL_RATIOS[Math.min(level, MAX_LIFE_STEAL_LEVEL)];
     }
 
     public static float absorptionForOverflow(float unusedHealing) {
         return Math.max(0.0F, unusedHealing) * ABSORPTION_RATIO;
     }
 
-    /**
-     * First-stage bridge. It deliberately performs no healing until a TACZ shot can
-     * be positively identified and its firing ItemStack/enchantment level resolved.
-     * False positives are worse than temporarily doing nothing here.
-     */
     public static void afterSuccessfulDamage(LivingEntity victim, DamageSource source, float requestedDamage) {
         if (victim == null || source == null || requestedDamage <= 0.0F) return;
         if (!looksLikeTaczBullet(source)) return;
-        // Shooter/gun/enchantment resolution is installed in the next bridge stage.
+        ServerPlayer shooter = exactShooter(source);
+        if (shooter == null) return;
+        // Never use nearest-player/global attacker fallback. Gun/enchantment resolution
+        // must be tied to this exact shooter before Life Steal or Magnet can execute.
+    }
+
+    /** Only accepts the player explicitly owned by this damage source. */
+    static ServerPlayer exactShooter(DamageSource source) {
+        Entity owner = source.getEntity();
+        return owner instanceof ServerPlayer player ? player : null;
     }
 
     static boolean looksLikeTaczBullet(DamageSource source) {
@@ -46,5 +49,11 @@ public final class TaczEnchantRuntime {
         if (direct == null) return false;
         String name = direct.getClass().getName().toLowerCase(java.util.Locale.ROOT);
         return name.contains("tacz") && (name.contains("bullet") || name.contains("projectile"));
+    }
+
+    /** Boss/shared rewards are intentionally excluded from future Magnet collection. */
+    static boolean sharedBossReward(LivingEntity victim) {
+        String id = victim.getType().toString().toLowerCase(java.util.Locale.ROOT);
+        return id.contains("ender_dragon") || id.contains("wither");
     }
 }
