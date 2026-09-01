@@ -18,22 +18,19 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Event-only death bridge for Magnet.
- *
- * Vanilla/TACZ rewards are not guaranteed to exist by the return of die(). We keep
- * a tiny per-victim capture window during the first few death ticks so delayed XP
- * and loot are still delivered to the exact fatal shooter without global ticking,
- * player scans, reflection, or a cross-player reward map.
- */
+/** Event-only Magnet capture anchored at the killed mob, never at shooter range. */
 @Mixin(LivingEntity.class)
 public abstract class TaczMagnetDeathMixin {
     private static final int MAGNET_CAPTURE_TICKS = 4;
+    private static final double REWARD_CAPTURE_RADIUS = 3.0D;
 
     private UUID godvillagers$magnetShooter;
     private Set<Integer> godvillagers$itemsBefore;
     private Set<Integer> godvillagers$xpBefore;
     private int godvillagers$magnetTicksLeft;
+    private double godvillagers$deathX;
+    private double godvillagers$deathY;
+    private double godvillagers$deathZ;
 
     @Inject(method = "die", at = @At("HEAD"), require = 0)
     private void godvillagers$resolveMagnetOwner(DamageSource source, CallbackInfo ci) {
@@ -41,13 +38,16 @@ public abstract class TaczMagnetDeathMixin {
         LivingEntity victim = (LivingEntity)(Object)this;
         if (!(victim.level() instanceof ServerLevel level) || TaczEnchantRuntime.sharedBossReward(victim)) return;
         ServerPlayer shooter = TaczEnchantRuntime.exactShooter(source);
-        if (shooter == null) return;
+        if (shooter == null || shooter.level() != level) return;
         ItemStack gun = shooter.getMainHandItem();
         if (!TaczEnchantRuntime.looksLikeTaczGun(gun) || TaczEnchantRuntime.enchantLevel(gun, TaczEnchantRuntime.MAGNET_ID) <= 0) return;
 
         godvillagers$magnetShooter = shooter.getUUID();
         godvillagers$magnetTicksLeft = MAGNET_CAPTURE_TICKS;
-        AABB box = victim.getBoundingBox().inflate(2.0D);
+        godvillagers$deathX = victim.getX();
+        godvillagers$deathY = victim.getY();
+        godvillagers$deathZ = victim.getZ();
+        AABB box = godvillagers$rewardBox();
         godvillagers$itemsBefore = new HashSet<>();
         for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, box)) godvillagers$itemsBefore.add(entity.getId());
         godvillagers$xpBefore = new HashSet<>();
@@ -71,22 +71,31 @@ public abstract class TaczMagnetDeathMixin {
         UUID shooterId = godvillagers$magnetShooter;
         if (shooterId == null || !(victim.level() instanceof ServerLevel level)) return;
         ServerPlayer shooter = level.getServer().getPlayerList().getPlayer(shooterId);
-        if (shooter == null) {
+        if (shooter == null || shooter.level() != level) {
             godvillagers$clearCapture();
             return;
         }
 
-        AABB box = victim.getBoundingBox().inflate(2.0D);
+        // Scan only the tiny death-site box. Shooter distance is intentionally irrelevant,
+        // so scoped sniper kills work exactly like close-range kills without a huge search.
+        AABB box = godvillagers$rewardBox();
         for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, box)) {
             if (godvillagers$itemsBefore == null || !godvillagers$itemsBefore.contains(entity.getId())) {
                 entity.teleportTo(shooter.getX(), shooter.getY(), shooter.getZ());
+                godvillagers$itemsBefore.add(entity.getId());
             }
         }
         for (ExperienceOrb orb : level.getEntitiesOfClass(ExperienceOrb.class, box)) {
             if (godvillagers$xpBefore == null || !godvillagers$xpBefore.contains(orb.getId())) {
                 orb.teleportTo(shooter.getX(), shooter.getY(), shooter.getZ());
+                godvillagers$xpBefore.add(orb.getId());
             }
         }
+    }
+
+    private AABB godvillagers$rewardBox() {
+        return new AABB(godvillagers$deathX - REWARD_CAPTURE_RADIUS, godvillagers$deathY - REWARD_CAPTURE_RADIUS, godvillagers$deathZ - REWARD_CAPTURE_RADIUS,
+                godvillagers$deathX + REWARD_CAPTURE_RADIUS, godvillagers$deathY + REWARD_CAPTURE_RADIUS, godvillagers$deathZ + REWARD_CAPTURE_RADIUS);
     }
 
     private void godvillagers$clearCapture() {
