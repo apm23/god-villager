@@ -28,6 +28,7 @@ public abstract class TaczMagnetDeathMixin {
     private Set<Integer> godvillagers$itemsBefore;
     private Set<Integer> godvillagers$xpBefore;
     private int godvillagers$magnetTicksLeft;
+    private int godvillagers$deathTick;
     private double godvillagers$deathX;
     private double godvillagers$deathY;
     private double godvillagers$deathZ;
@@ -44,6 +45,7 @@ public abstract class TaczMagnetDeathMixin {
 
         godvillagers$magnetShooter = shooter.getUUID();
         godvillagers$magnetTicksLeft = MAGNET_CAPTURE_TICKS;
+        godvillagers$deathTick = level.getServer().getTickCount();
         godvillagers$deathX = victim.getX();
         godvillagers$deathY = victim.getY();
         godvillagers$deathZ = victim.getZ();
@@ -79,14 +81,15 @@ public abstract class TaczMagnetDeathMixin {
         AABB box = godvillagers$rewardBox();
         for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, box)) {
             if (godvillagers$itemsBefore == null || godvillagers$itemsBefore.contains(entity.getId())) continue;
+            // Only accept entities born during this kill's short capture window. This keeps
+            // another player's newly-thrown item or unrelated delayed drop from being stolen.
+            if (entity.getTickCount() > MAGNET_CAPTURE_TICKS + 1) continue;
             godvillagers$itemsBefore.add(entity.getId());
             ItemStack reward = entity.getItem().copy();
             if (reward.isEmpty()) {
                 entity.discard();
                 continue;
             }
-            // Inventory.add mutates the supplied stack. Whatever remains after the call is
-            // the exact overflow and must be preserved instead of restoring the full stack.
             shooter.getInventory().add(reward);
             if (reward.isEmpty()) {
                 entity.discard();
@@ -98,6 +101,7 @@ public abstract class TaczMagnetDeathMixin {
         }
         for (ExperienceOrb orb : level.getEntitiesOfClass(ExperienceOrb.class, box)) {
             if (godvillagers$xpBefore == null || godvillagers$xpBefore.contains(orb.getId())) continue;
+            if (orb.getTickCount() > MAGNET_CAPTURE_TICKS + 1) continue;
             godvillagers$xpBefore.add(orb.getId());
             shooter.giveExperiencePoints(orb.getValue());
             orb.discard();
@@ -114,5 +118,6 @@ public abstract class TaczMagnetDeathMixin {
         godvillagers$itemsBefore = null;
         godvillagers$xpBefore = null;
         godvillagers$magnetTicksLeft = 0;
+        godvillagers$deathTick = 0;
     }
 }
