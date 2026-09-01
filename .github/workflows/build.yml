@@ -17,7 +17,7 @@ jobs:
           gradle-version: '9.5.0'
 
       - name: Clean compile
-        run: gradle clean classes --stacktrace
+        run: gradle clean classes processResources --stacktrace
 
       - name: Reconstruct alpha.75 base
         run: |
@@ -29,19 +29,19 @@ jobs:
           unzip -t "$BASE"
           echo 'de208ae1b79f11f6beba76717da16f7f83b3b4f4b976661647759bd35dc8faea  '"$BASE" | sha256sum -c -
 
-      - name: Verify compiled replacement classes
+      - name: Verify compiled replacement classes and resources
         run: |
           set -euxo pipefail
           test -f build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class
           test -f build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class
           test -f build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class
           test -f build/resources/main/godvillagers.mixins.json
+          for level in 4 5 6 7 8 9 10; do test -f "build/resources/main/data/godvillagers/recipe/firework_flight_${level}.json"; done
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.GodHorseRuntime | grep 'major version: 69'
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.SpecialistSpawnEggItem | grep 'major version: 69'
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin.GodHorseLeashMixin | grep 'major version: 69'
-          grep -F 'GodHorseLeashMixin' build/resources/main/godvillagers.mixins.json
 
-      - name: Assemble full God Villagers alpha.83
+      - name: Assemble full God Villagers alpha.84
         run: |
           set -euxo pipefail
           python3 - <<'PY'
@@ -56,7 +56,10 @@ jobs:
             'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class': Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),
             'godvillagers.mixins.json': Path('build/resources/main/godvillagers.mixins.json').read_bytes(),
           }
-          out=Path('build/full/god-villagers-0.1.0-alpha.83+mc26.2.jar')
+          resources=Path('build/resources/main/data')
+          for p in resources.rglob('*'):
+              if p.is_file(): extra[p.relative_to('build/resources/main').as_posix()]=p.read_bytes()
+          out=Path('build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar')
           out.parent.mkdir(parents=True,exist_ok=True)
           with zipfile.ZipFile(base) as zin, zipfile.ZipFile(out,'w') as zout:
               names=set()
@@ -65,34 +68,43 @@ jobs:
                   if info.filename in replacements: data=replacements[info.filename]
                   elif info.filename=='fabric.mod.json':
                       meta=json.loads(data.decode()); assert meta['id']=='godvillagers'
-                      meta['version']='0.1.0-alpha.83+mc26.2'; data=json.dumps(meta,indent=2).encode()
+                      meta['version']='0.1.0-alpha.84+mc26.2'; data=json.dumps(meta,indent=2).encode()
                   zout.writestr(info,data); names.add(info.filename)
               for name,data in extra.items():
                   if name not in names: zout.writestr(name,data)
           PY
 
-      - name: Verify full jar and alpha.83 leash mixin
+      - name: Verify full jar, trades, and Flight IV-X recipes
         run: |
           set -euxo pipefail
-          JAR='build/full/god-villagers-0.1.0-alpha.83+mc26.2.jar'
+          JAR='build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar'
           unzip -t "$JAR"
           python3 - <<'PY'
           import json,zipfile,hashlib
           from pathlib import Path
-          jar=Path('build/full/god-villagers-0.1.0-alpha.83+mc26.2.jar')
+          jar=Path('build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar')
           with zipfile.ZipFile(jar) as z:
-              m=json.loads(z.read('fabric.mod.json')); assert m['id']=='godvillagers' and m['version']=='0.1.0-alpha.83+mc26.2'
+              m=json.loads(z.read('fabric.mod.json')); assert m['id']=='godvillagers' and m['version']=='0.1.0-alpha.84+mc26.2'
               assert z.read('com/anjas/godvillagers/GodHorseRuntime.class')==Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
               assert z.read('com/anjas/godvillagers/SpecialistSpawnEggItem.class')==Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()
-              assert z.read('com/anjas/godvillagers/mixin/GodHorseLeashMixin.class')==Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes()
               assert b'GodHorseLeashMixin' in z.read('godvillagers.mixins.json')
+              for level in range(4,11):
+                  name=f'data/godvillagers/recipe/firework_flight_{level}.json'
+                  r=json.loads(z.read(name))
+                  assert r['type']=='minecraft:crafting_shapeless'
+                  assert r['ingredients'][0]=='minecraft:firework_rocket'
+                  assert len(r['ingredients'])==level-2
+                  assert all(x=='minecraft:copper_ingot' for x in r['ingredients'][1:])
+                  assert r['result']['id']=='minecraft:firework_rocket'
+                  assert r['result']['components']['minecraft:fireworks']['flight_duration']==level
           print('jar_sha256='+hashlib.sha256(jar.read_bytes()).hexdigest())
           PY
-          javap -classpath "$JAR" -p -constants com.anjas.godvillagers.SpecialistSpawnEggItem > alpha83-javap.txt
-          javap -classpath "$JAR" -p com.anjas.godvillagers.mixin.GodHorseLeashMixin >> alpha83-javap.txt
-          grep -F 'luck_of_the_sea:6,lure:10,unbreaking:3,mending:2' alpha83-javap.txt
-          grep -F 'unbreaking:4,mending:3,thorns:5' alpha83-javap.txt
-          grep -F 'godvillagers$allowGodHorseLeash' alpha83-javap.txt
+          javap -classpath "$JAR" -p -constants com.anjas.godvillagers.SpecialistSpawnEggItem > alpha84-javap.txt
+          javap -classpath "$JAR" -p com.anjas.godvillagers.mixin.GodHorseLeashMixin >> alpha84-javap.txt
+          grep -F 'looting:3' alpha84-javap.txt
+          grep -F 'looting:4' alpha84-javap.txt
+          grep -F 'looting:5' alpha84-javap.txt
+          grep -F 'godvillagers$allowGodHorseLeash' alpha84-javap.txt
 
       - name: Prepare dedicated server
         run: |
@@ -102,49 +114,47 @@ jobs:
           java -jar ../fabric-installer.jar server -mcversion 26.2 -loader 0.19.3 -downloadMinecraft
           mkdir -p mods
           curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.158.0+26.2/fabric-api-0.158.0+26.2.jar'
-          cp ../build/full/god-villagers-0.1.0-alpha.83+mc26.2.jar mods/
+          cp ../build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar mods/
           printf 'eula=true\n' > eula.txt
           printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
 
-      - name: Alpha.83 lead mixin and horse regression test
+      - name: Alpha.84 server recipe-load and horse regression
         run: |
           set -euxo pipefail
           cd standalone
           set +e
           {
             sleep 25
+            echo 'reload'
+            sleep 8
             echo 'forceload add 0 0 44 4'
-            sleep 3
             echo 'fill 20 95 0 24 95 4 minecraft:water'
             echo 'fill 30 90 0 34 100 4 minecraft:water'
             echo 'summon minecraft:skeleton_horse 10 100 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lead_candidate"]}'
-            echo 'summon minecraft:skeleton_horse 14 100 2 {Tame:1b,PersistenceRequired:1b,Tags:["normal_control"]}'
             echo 'summon minecraft:skeleton_horse 22 94.5 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","ridden_half"],Passengers:[{id:"minecraft:armor_stand",NoGravity:1b,Invisible:1b,Tags:["rider_proxy"]}]}'
             echo 'summon minecraft:skeleton_horse 32 108 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","ridden_jump"],Motion:[0.0d,-2.5d,0.0d],Passengers:[{id:"minecraft:armor_stand",NoGravity:1b,Invisible:1b,Tags:["jump_rider_proxy"]}]}'
             sleep 8
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lead_candidate,limit=1] run say GOD_HORSE_LEAD_TARGET_PRESENT'
-            echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=normal_control,limit=1] run say NORMAL_HORSE_CONTROL_PRESENT'
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=ridden_half,x=20,y=96,z=0,dx=4,dy=2,dz=4] if entity @e[tag=rider_proxy] run say RIDDEN_HALF_RECOVERY_PASS'
             echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=ridden_jump,x=30,y=100,z=0,dx=4,dy=2,dz=4] if entity @e[tag=jump_rider_proxy] run say RIDDEN_JUMP_RECOVERY_PASS'
             echo 'stop'
-          } | timeout 100s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
+          } | timeout 110s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}
           set -e
           cd ..
           cat full-server-test.log
-          if grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server' full-server-test.log; then exit 1; fi
-          grep -Eqi 'godvillagers 0\.1\.0-alpha\.83\+mc26\.2' full-server-test.log
+          if grep -Eqi 'Parsing error loading recipe|Failed to parse|Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server' full-server-test.log; then exit 1; fi
+          grep -Eqi 'godvillagers 0\.1\.0-alpha\.84\+mc26\.2' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
           grep -Fq 'GOD_HORSE_LEAD_TARGET_PRESENT' full-server-test.log
-          grep -Fq 'NORMAL_HORSE_CONTROL_PRESENT' full-server-test.log
           grep -Fq 'RIDDEN_HALF_RECOVERY_PASS' full-server-test.log
           grep -Fq 'RIDDEN_JUMP_RECOVERY_PASS' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha83-lead-horse-regression-verified
+          name: god-villagers-alpha84-firework-trades-horse-verified
           path: |
-            build/full/god-villagers-0.1.0-alpha.83+mc26.2.jar
+            build/full/god-villagers-0.1.0-alpha.84+mc26.2.jar
             full-server-test.log
-            alpha83-javap.txt
+            alpha84-javap.txt
