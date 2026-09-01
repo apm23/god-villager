@@ -1,9 +1,17 @@
 package com.anjas.godvillagers;
 
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+
+import java.util.Locale;
 
 /**
  * Runtime constants and balancing rules for the optional TACZ enchant integration.
@@ -34,11 +42,18 @@ public final class TaczEnchantRuntime {
         if (!looksLikeTaczBullet(source)) return;
         ServerPlayer shooter = exactShooter(source);
         if (shooter == null) return;
-        // Never use nearest-player/global attacker fallback. Gun/enchantment resolution
-        // must be tied to this exact shooter before Life Steal or Magnet can execute.
+
+        ItemStack gun = shooter.getMainHandItem();
+        if (!looksLikeTaczGun(gun)) return;
+
+        int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
+        int magnet = enchantLevel(gun, MAGNET_ID);
+        if (lifeSteal <= 0 && magnet <= 0) return;
+
+        // Healing and fatal-shot handling are applied only after these exact ownership
+        // and exact-gun gates pass. Never use nearest player or global attacker state.
     }
 
-    /** Only accepts the player explicitly owned by this damage source. */
     static ServerPlayer exactShooter(DamageSource source) {
         Entity owner = source.getEntity();
         return owner instanceof ServerPlayer player ? player : null;
@@ -47,13 +62,29 @@ public final class TaczEnchantRuntime {
     static boolean looksLikeTaczBullet(DamageSource source) {
         Entity direct = source.getDirectEntity();
         if (direct == null) return false;
-        String name = direct.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+        String name = direct.getClass().getName().toLowerCase(Locale.ROOT);
         return name.contains("tacz") && (name.contains("bullet") || name.contains("projectile"));
     }
 
-    /** Boss/shared rewards are intentionally excluded from future Magnet collection. */
+    static boolean looksLikeTaczGun(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase(Locale.ROOT);
+        return id.startsWith("tacz:") || id.contains(":tacz_") || id.contains("tacz");
+    }
+
+    static int enchantLevel(ItemStack stack, String wantedId) {
+        ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
+        for (Holder<Enchantment> holder : enchantments.keySet()) {
+            var key = holder.unwrapKey();
+            if (key.isPresent() && key.get().location().toString().equals(wantedId)) {
+                return enchantments.getLevel(holder);
+            }
+        }
+        return 0;
+    }
+
     static boolean sharedBossReward(LivingEntity victim) {
-        String id = victim.getType().toString().toLowerCase(java.util.Locale.ROOT);
+        String id = victim.getType().toString().toLowerCase(Locale.ROOT);
         return id.contains("ender_dragon") || id.contains("wither");
     }
 }
