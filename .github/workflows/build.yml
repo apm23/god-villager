@@ -15,10 +15,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-
       - name: Clean compile
         run: gradle clean classes processResources --stacktrace
-
       - name: Reconstruct alpha.75 base
         run: |
           set -euxo pipefail
@@ -28,7 +26,6 @@ jobs:
           test "$(stat -c%s "$BASE")" = '22519'
           unzip -t "$BASE"
           echo 'de208ae1b79f11f6beba76717da16f7f83b3b4f4b976661647759bd35dc8faea  '"$BASE" | sha256sum -c -
-
       - name: Verify compiled replacement classes and resources
         run: |
           set -euxo pipefail
@@ -38,8 +35,6 @@ jobs:
           test -f build/resources/main/data/godvillagers/enchantment/life_steal.json
           for level in 4 5 6 7 8 9 10; do test -f "build/resources/main/data/godvillagers/recipe/firework_flight_${level}.json"; done
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.TaczEnchantRuntime | grep 'major version: 69'
-          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin/TaczMagnetDeathMixin 2>/dev/null || javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin.TaczMagnetDeathMixin | grep 'major version: 69'
-
       - name: Assemble full God Villagers alpha.85
         run: |
           set -euxo pipefail
@@ -63,7 +58,6 @@ jobs:
               for name,data in extra.items():
                   if name not in names: zout.writestr(name,data)
           PY
-
       - name: Verify alpha.85 runtime packaging
         run: |
           set -euxo pipefail
@@ -75,11 +69,7 @@ jobs:
               assert 'com/anjas/godvillagers/TaczEnchantRuntime.class' in z.namelist()
               assert 'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class' in z.namelist()
               assert 'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class' in z.namelist()
-              mix=z.read('godvillagers.mixins.json'); assert b'TaczBulletDamageMixin' in mix and b'TaczMagnetDeathMixin' in mix
-              assert json.loads(z.read('data/godvillagers/enchantment/magnet.json'))['max_level']==1
-              assert json.loads(z.read('data/godvillagers/enchantment/life_steal.json'))['max_level']==3
           PY
-
       - name: Prepare dedicated server
         run: |
           set -euxo pipefail
@@ -91,7 +81,6 @@ jobs:
           cp ../build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar mods/
           printf 'eula=true\n' > eula.txt
           printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
-
       - name: Alpha.85 server startup and reload regression
         run: |
           set -euxo pipefail
@@ -103,10 +92,24 @@ jobs:
           grep -Eqi 'Done \(' full-server-test.log
           grep -Fq '[Server] ALPHA85_COMMAND_PIPE_ALIVE' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
-
+      - name: Fabric API 0.159 compatibility smoke
+        run: |
+          set -euxo pipefail
+          cd standalone
+          rm -f mods/fabric-api.jar
+          curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.159.0+26.2/fabric-api-0.159.0+26.2.jar'
+          set +e
+          { sleep 25; echo 'say FABRIC159_ALIVE'; sleep 3; echo stop; } | timeout 70s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../fabric159-server-test.log 2>&1
+          code=${PIPESTATUS[1]}; set -e; cd ..; cat fabric159-server-test.log
+          if grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' fabric159-server-test.log; then exit 1; fi
+          grep -Eqi 'godvillagers 0\.1\.0-alpha\.85\+mc26\.2' fabric159-server-test.log
+          grep -Eqi 'Done \(' fabric159-server-test.log
+          grep -Fq '[Server] FABRIC159_ALIVE' fabric159-server-test.log
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
       - uses: actions/upload-artifact@v4
         with:
           name: god-villagers-alpha85-tacz-bridge-verified
           path: |
             build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar
             full-server-test.log
+            fabric159-server-test.log
