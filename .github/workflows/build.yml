@@ -88,6 +88,9 @@ jobs:
               assert z.read('com/anjas/godvillagers/GodHorseRuntime.class')==Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes()
               assert z.read('com/anjas/godvillagers/SpecialistSpawnEggItem.class')==Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()
               assert b'GodHorseLeashMixin' in z.read('godvillagers.mixins.json')
+              trade_class=z.read('com/anjas/godvillagers/SpecialistSpawnEggItem.class')
+              for token in (b'looting:3', b'looting:4', b'looting:5'):
+                  assert token in trade_class, f'missing trade constant {token!r}'
               for level in range(4,11):
                   name=f'data/godvillagers/recipe/firework_flight_{level}.json'
                   r=json.loads(z.read(name))
@@ -99,11 +102,7 @@ jobs:
                   assert r['result']['components']['minecraft:fireworks']['flight_duration']==level
           print('jar_sha256='+hashlib.sha256(jar.read_bytes()).hexdigest())
           PY
-          javap -classpath "$JAR" -p -constants com.anjas.godvillagers.SpecialistSpawnEggItem > alpha84-javap.txt
-          javap -classpath "$JAR" -p com.anjas.godvillagers.mixin.GodHorseLeashMixin >> alpha84-javap.txt
-          grep -F 'looting:3' alpha84-javap.txt
-          grep -F 'looting:4' alpha84-javap.txt
-          grep -F 'looting:5' alpha84-javap.txt
+          javap -classpath "$JAR" -p com.anjas.godvillagers.mixin.GodHorseLeashMixin > alpha84-javap.txt
           grep -F 'godvillagers$allowGodHorseLeash' alpha84-javap.txt
 
       - name: Prepare dedicated server
