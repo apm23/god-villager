@@ -67,7 +67,7 @@ public final class TaczEnchantRuntime {
         ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
         for (Holder<Enchantment> holder : enchantments.keySet()) {
             var key = holder.unwrapKey();
-            // MC 26.2 ResourceKey exposes identifier through identifier(), not location().
+            // Yarn/Mojmap 26.2 exposes the ResourceKey identifier as identifier().
             if (key.isPresent() && key.get().identifier().toString().equals(wantedId)) {
                 return enchantments.getLevel(holder);
             }
