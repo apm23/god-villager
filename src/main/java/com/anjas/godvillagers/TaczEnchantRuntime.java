@@ -13,24 +13,20 @@ import net.minecraft.world.item.enchantment.ItemEnchantments;
 
 import java.util.Locale;
 
-/**
- * Runtime constants and balancing rules for the optional TACZ enchant integration.
- * No TACZ class is referenced directly, keeping God Villagers safe when TACZ is absent.
- */
+/** Optional TACZ enchant runtime with strict per-shooter ownership. */
 public final class TaczEnchantRuntime {
     public static final String MAGNET_ID = "godvillagers:magnet";
     public static final String LIFE_STEAL_ID = "godvillagers:life_steal";
     public static final int MAX_LIFE_STEAL_LEVEL = 3;
-
     private static final float[] LIFE_STEAL_RATIOS = {0.0F, 0.05F, 0.075F, 0.10F};
     public static final float ABSORPTION_RATIO = 0.50F;
     public static final float MAX_ABSORPTION_HEALTH = 4.0F;
 
     private TaczEnchantRuntime() {}
 
-    public static float healingForDamage(float actualBulletDamage, int level) {
-        if (actualBulletDamage <= 0.0F || level <= 0) return 0.0F;
-        return actualBulletDamage * LIFE_STEAL_RATIOS[Math.min(level, MAX_LIFE_STEAL_LEVEL)];
+    public static float healingForDamage(float damage, int level) {
+        if (damage <= 0.0F || level <= 0) return 0.0F;
+        return damage * LIFE_STEAL_RATIOS[Math.min(level, MAX_LIFE_STEAL_LEVEL)];
     }
 
     public static float absorptionForOverflow(float unusedHealing) {
@@ -38,20 +34,15 @@ public final class TaczEnchantRuntime {
     }
 
     public static void afterSuccessfulDamage(LivingEntity victim, DamageSource source, float requestedDamage) {
-        if (victim == null || source == null || requestedDamage <= 0.0F) return;
-        if (!looksLikeTaczBullet(source)) return;
+        if (victim == null || source == null || requestedDamage <= 0.0F || !looksLikeTaczBullet(source)) return;
         ServerPlayer shooter = exactShooter(source);
         if (shooter == null) return;
-
         ItemStack gun = shooter.getMainHandItem();
         if (!looksLikeTaczGun(gun)) return;
-
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
         int magnet = enchantLevel(gun, MAGNET_ID);
         if (lifeSteal <= 0 && magnet <= 0) return;
-
-        // Healing and fatal-shot handling are applied only after these exact ownership
-        // and exact-gun gates pass. Never use nearest player or global attacker state.
+        // Effect application follows after this ownership + gun + enchant gate is verified.
     }
 
     static ServerPlayer exactShooter(DamageSource source) {
@@ -76,7 +67,8 @@ public final class TaczEnchantRuntime {
         ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
         for (Holder<Enchantment> holder : enchantments.keySet()) {
             var key = holder.unwrapKey();
-            if (key.isPresent() && key.get().location().toString().equals(wantedId)) {
+            // MC 26.2 ResourceKey exposes identifier through identifier(), not location().
+            if (key.isPresent() && key.get().identifier().toString().equals(wantedId)) {
                 return enchantments.getLevel(holder);
             }
         }
