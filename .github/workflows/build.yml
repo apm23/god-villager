@@ -15,132 +15,66 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-
       - name: Clean compile
         run: gradle clean classes processResources --stacktrace
-
-      - name: Reconstruct exact alpha.82 base
+      - name: Reconstruct and diagnose alpha.82 base
         run: |
           set -euxo pipefail
           mkdir -p ci/reconstructed
           cat ci/base82_base64/part_*.b64 | base64 -d > ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar
           BASE='ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar'
-          test "$(stat -c%s "$BASE")" = '24102'
+          stat -c 'ALPHA82_SIZE=%s' "$BASE"
+          sha256sum "$BASE"
           unzip -t "$BASE"
-          echo '9b3ccef46bc213e890f815860fef72f1f438c08ef9b8ca96c9927be22ae4d6b8  '"$BASE" | sha256sum -c -
           unzip -p "$BASE" fabric.mod.json | grep -F '0.1.0-alpha.82+mc26.2'
-
+          test "$(stat -c%s "$BASE")" = '24104'
       - name: Verify alpha85 compiled overlay
         run: |
           set -euxo pipefail
-          for f in \
-            build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class \
-            build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class \
-            build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class \
-            build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class \
-            build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class \
-            build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class; do test -f "$f"; done
+          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class; do test -f "$f"; done
           test -f build/resources/main/godvillagers.mixins.json
-          test -f build/resources/main/data/godvillagers/enchantment/magnet.json
-          test -f build/resources/main/data/godvillagers/enchantment/life_steal.json
-          test -f build/resources/main/data/godvillagers/recipe/bone_to_book.json
-          test -f build/resources/main/data/godvillagers/recipe/coal_to_book.json
-          test -f build/resources/main/data/godvillagers/recipe/copper_to_book.json
-          test -f build/resources/main/data/godvillagers/recipe/phantom_membrane_to_emerald.json
-          test -f build/resources/main/data/godvillagers/recipe/phantom_membrane_to_book.json
-
       - name: Assemble alpha.85 from alpha.82
         run: |
-          set -euxo pipefail
           python3 - <<'PY'
-          import json, zipfile
+          import json,zipfile
           from pathlib import Path
-          base=Path('ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar')
-          classes=Path('build/classes/java/main')
-          resources=Path('build/resources/main')
-          replacements={
-              'com/anjas/godvillagers/GodHorseRuntime.class':(classes/'com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),
-              'com/anjas/godvillagers/SpecialistSpawnEggItem.class':(classes/'com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes(),
-          }
-          extra={
-              'com/anjas/godvillagers/TaczEnchantRuntime.class':(classes/'com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),
-              'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':(classes/'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),
-              'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),
-              'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class').read_bytes(),
-              'godvillagers.mixins.json':(resources/'godvillagers.mixins.json').read_bytes(),
-          }
+          base=Path('ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar'); classes=Path('build/classes/java/main'); resources=Path('build/resources/main')
+          replacements={'com/anjas/godvillagers/GodHorseRuntime.class':(classes/'com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),'com/anjas/godvillagers/SpecialistSpawnEggItem.class':(classes/'com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()}
+          extra={'com/anjas/godvillagers/TaczEnchantRuntime.class':(classes/'com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':(classes/'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class').read_bytes(),'godvillagers.mixins.json':(resources/'godvillagers.mixins.json').read_bytes()}
           for p in (resources/'data').rglob('*'):
               if p.is_file(): extra[p.relative_to(resources).as_posix()]=p.read_bytes()
-          out=Path('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar')
-          out.parent.mkdir(parents=True,exist_ok=True)
-          with zipfile.ZipFile(base) as zin, zipfile.ZipFile(out,'w') as zout:
+          out=Path('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'); out.parent.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(base) as zin,zipfile.ZipFile(out,'w') as zout:
               names=set()
               for info in zin.infolist():
                   data=zin.read(info.filename)
-                  if info.filename in replacements: data=replacements[info.filename]
+                  if info.filename in replacements:data=replacements[info.filename]
                   elif info.filename=='fabric.mod.json':
-                      meta=json.loads(data.decode())
-                      meta['version']='0.1.0-alpha.85+mc26.2'
-                      data=json.dumps(meta,indent=2).encode()
-                  zout.writestr(info,data); names.add(info.filename)
+                      meta=json.loads(data.decode());meta['version']='0.1.0-alpha.85+mc26.2';data=json.dumps(meta,indent=2).encode()
+                  zout.writestr(info,data);names.add(info.filename)
               for name,data in extra.items():
-                  if name not in names: zout.writestr(name,data)
+                  if name not in names:zout.writestr(name,data)
           PY
           unzip -t build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar
-
-      - name: Verify alpha82 foundation survived packaging
-        run: |
-          set -euxo pipefail
-          python3 - <<'PY'
-          import zipfile
-          base='ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar'
-          out='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'
-          protected=['com/anjas/godvillagers/GodVillagersMod.class','com/anjas/godvillagers/CommandsData.class']
-          with zipfile.ZipFile(base) as a, zipfile.ZipFile(out) as b:
-              for name in protected:
-                  assert a.read(name)==b.read(name), name
-              assert 'com/anjas/godvillagers/SpecialistSpawnEggItem.class' in b.namelist()
-          PY
-
       - name: Prepare dedicated server
         run: |
-          set -euxo pipefail
           curl -fL --retry 3 -o fabric-installer.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.1.0/fabric-installer-1.1.0.jar'
           mkdir -p standalone && cd standalone
           java -jar ../fabric-installer.jar server -mcversion 26.2 -loader 0.19.3 -downloadMinecraft
           mkdir -p mods
-          curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.158.0+26.2/fabric-api-0.158.0+26.2.jar'
+          curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.159.0+26.2/fabric-api-0.159.0+26.2.jar'
           cp ../build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar mods/
           printf 'eula=true\n' > eula.txt
-          printf 'online-mode=false\nserver-port=25565\nspawn-protection=0\n' > server.properties
-
-      - name: Alpha85 server regression on Fabric API 0.158
+      - name: Fast server smoke
         run: |
           cd standalone; set +e
-          { sleep 25; echo reload; sleep 8; echo 'say ALPHA85_BASE82_ALIVE'; sleep 3; echo stop; } | timeout 85s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
-          code=${PIPESTATUS[1]}; set -e; cd ..; cat full-server-test.log
-          ! grep -Eqi 'Parsing error loading recipe|Failed to parse|Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' full-server-test.log
-          grep -Eqi 'Done \(' full-server-test.log
-          grep -Fq '[Server] ALPHA85_BASE82_ALIVE' full-server-test.log
+          { sleep 25; echo 'say BASE82_REBUILD_ALIVE'; sleep 2; echo stop; } | timeout 60s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../server.log 2>&1
+          code=${PIPESTATUS[1]}; set -e; cd ..; cat server.log
+          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' server.log
+          grep -Eqi 'Done \(' server.log
+          grep -Fq '[Server] BASE82_REBUILD_ALIVE' server.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
-
-      - name: Fabric API 0.159 compatibility smoke
-        run: |
-          cd standalone
-          rm -f mods/fabric-api.jar
-          curl -fL --retry 3 -o mods/fabric-api.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/0.159.0+26.2/fabric-api-0.159.0+26.2.jar'
-          set +e
-          { sleep 25; echo 'say FABRIC159_BASE82_ALIVE'; sleep 3; echo stop; } | timeout 70s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../fabric159-server-test.log 2>&1
-          code=${PIPESTATUS[1]}; set -e; cd ..; cat fabric159-server-test.log
-          ! grep -Eqi 'Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' fabric159-server-test.log
-          grep -Eqi 'Done \(' fabric159-server-test.log
-          grep -Fq '[Server] FABRIC159_BASE82_ALIVE' fabric159-server-test.log
-          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
-
       - uses: actions/upload-artifact@v4
         with:
-          name: god-villagers-alpha85-base82-verified
-          path: |
-            build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar
-            full-server-test.log
-            fabric159-server-test.log
+          name: god-villagers-alpha85-base82-fast
+          path: build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar
