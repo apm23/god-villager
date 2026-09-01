@@ -7,6 +7,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,7 +18,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/** Event-only death bridge: no ticking, no global scans, strict TACZ Magnet ownership. */
+/** Event-only death bridge: resolves the fatal shooter before drops are produced. */
 @Mixin(LivingEntity.class)
 public abstract class TaczMagnetDeathMixin {
     private UUID godvillagers$magnetShooter;
@@ -28,12 +29,13 @@ public abstract class TaczMagnetDeathMixin {
     private void godvillagers$resolveMagnetOwner(DamageSource source, CallbackInfo ci) {
         godvillagers$clearCapture();
         LivingEntity victim = (LivingEntity)(Object)this;
-        UUID shooterId = TaczEnchantRuntime.consumeMagnetFatalShooter(victim);
-        if (shooterId == null || !(victim.level() instanceof ServerLevel level)) return;
-        ServerPlayer shooter = level.getServer().getPlayerList().getPlayer(shooterId);
+        if (!(victim.level() instanceof ServerLevel level) || TaczEnchantRuntime.sharedBossReward(victim)) return;
+        ServerPlayer shooter = TaczEnchantRuntime.exactShooter(source);
         if (shooter == null) return;
+        ItemStack gun = shooter.getMainHandItem();
+        if (!TaczEnchantRuntime.looksLikeTaczGun(gun) || TaczEnchantRuntime.enchantLevel(gun, TaczEnchantRuntime.MAGNET_ID) <= 0) return;
 
-        godvillagers$magnetShooter = shooterId;
+        godvillagers$magnetShooter = shooter.getUUID();
         AABB box = victim.getBoundingBox().inflate(2.0D);
         godvillagers$itemsBefore = new HashSet<>();
         for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, box)) godvillagers$itemsBefore.add(entity.getId());
