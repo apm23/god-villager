@@ -46,7 +46,10 @@ jobs:
           with zipfile.ZipFile(base) as zin,zipfile.ZipFile(out,'w') as zout:
               names=set()
               for info in zin.infolist():
-                  data=replacements.get(info.filename,zin.read(info.filename))
+                  if info.filename in replacements:
+                      data=replacements[info.filename]
+                  else:
+                      data=zin.read(info.filename)
                   if info.filename=='fabric.mod.json':
                       meta=json.loads(data.decode());meta['version']='0.1.0-alpha.85+mc26.2';data=json.dumps(meta,indent=2).encode()
                   zout.writestr(info,data);names.add(info.filename)
