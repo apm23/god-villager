@@ -17,9 +17,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(LivingEntity.class)
 public abstract class TaczBulletDamageMixin {
+    private float godvillagers$healthBeforeDamage;
+
+    @Inject(method = "hurtServer", at = @At("HEAD"), require = 0)
+    private void godvillagers$captureHealthBeforeDamage(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+        godvillagers$healthBeforeDamage = ((LivingEntity)(Object)this).getHealth();
+    }
+
     @Inject(method = "hurtServer", at = @At("RETURN"), require = 0)
     private void godvillagers$afterServerDamage(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
         if (!cir.getReturnValue()) return;
-        TaczEnchantRuntime.afterSuccessfulDamage((LivingEntity)(Object)this, source, amount);
+        LivingEntity victim = (LivingEntity)(Object)this;
+        float dealt = TaczEnchantRuntime.actualDamage(godvillagers$healthBeforeDamage, victim.getHealth());
+        if (dealt <= 0.0F) return;
+        TaczEnchantRuntime.afterSuccessfulDamage(victim, source, dealt);
     }
 }
