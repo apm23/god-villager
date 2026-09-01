@@ -12,9 +12,6 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 
 import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** Optional TACZ enchant runtime with strict per-shooter ownership. */
 public final class TaczEnchantRuntime {
@@ -24,7 +21,6 @@ public final class TaczEnchantRuntime {
     private static final float[] LIFE_STEAL_RATIOS = {0.0F, 0.05F, 0.075F, 0.10F};
     public static final float ABSORPTION_RATIO = 0.50F;
     public static final float MAX_ABSORPTION_HEALTH = 4.0F;
-    private static final Map<UUID, UUID> MAGNET_FATAL_SHOOTERS = new ConcurrentHashMap<>();
 
     private TaczEnchantRuntime() {}
 
@@ -41,28 +37,13 @@ public final class TaczEnchantRuntime {
         if (victim == null || source == null || requestedDamage <= 0.0F) return;
         ServerPlayer shooter = exactShooter(source);
         if (shooter == null) return;
-
-        // TACZ 26.2 can report the owning player without retaining a bullet entity.
-        // A server-authoritative shooter holding a TACZ item is therefore sufficient;
-        // this avoids reflection, TACZ class linking and any per-tick scanning.
         ItemStack gun = shooter.getMainHandItem();
         if (!looksLikeTaczGun(gun)) return;
-
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
-        int magnet = enchantLevel(gun, MAGNET_ID);
-        if (lifeSteal <= 0 && magnet <= 0) return;
         if (lifeSteal > 0) applyLifeSteal(shooter, requestedDamage, lifeSteal);
-        if (magnet > 0 && victim.isDeadOrDying() && !sharedBossReward(victim)) {
-            MAGNET_FATAL_SHOOTERS.put(victim.getUUID(), shooter.getUUID());
-        }
     }
 
-    public static UUID consumeMagnetFatalShooter(LivingEntity victim) {
-        if (victim == null || sharedBossReward(victim)) return null;
-        return MAGNET_FATAL_SHOOTERS.remove(victim.getUUID());
-    }
-
-    static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
+    public static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
         float budget = healingForDamage(bulletDamage, level);
         if (budget <= 0.0F) return;
         float missing = Math.max(0.0F, shooter.getMaxHealth() - shooter.getHealth());
@@ -73,20 +54,20 @@ public final class TaczEnchantRuntime {
         shooter.setAbsorptionAmount(Math.min(MAX_ABSORPTION_HEALTH, shooter.getAbsorptionAmount() + absorptionForOverflow(overflow)));
     }
 
-    static ServerPlayer exactShooter(DamageSource source) {
+    public static ServerPlayer exactShooter(DamageSource source) {
         Entity owner = source.getEntity();
         if (owner instanceof ServerPlayer player) return player;
         Entity direct = source.getDirectEntity();
         return direct instanceof ServerPlayer player ? player : null;
     }
 
-    static boolean looksLikeTaczGun(ItemStack stack) {
+    public static boolean looksLikeTaczGun(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase(Locale.ROOT);
         return id.startsWith("tacz:") || id.contains(":tacz_") || id.contains("tacz");
     }
 
-    static int enchantLevel(ItemStack stack, String wantedId) {
+    public static int enchantLevel(ItemStack stack, String wantedId) {
         ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
         for (Holder<Enchantment> holder : enchantments.keySet()) {
             var key = holder.unwrapKey();
@@ -95,7 +76,7 @@ public final class TaczEnchantRuntime {
         return 0;
     }
 
-    static boolean sharedBossReward(LivingEntity victim) {
+    public static boolean sharedBossReward(LivingEntity victim) {
         String id = victim.getType().toString().toLowerCase(Locale.ROOT);
         return id.contains("ender_dragon") || id.contains("wither");
     }
