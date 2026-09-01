@@ -15,18 +15,23 @@ import java.util.List;
 public final class SpecialistSpawnEggItem extends Item {
     private static final String GOD_FISHING_ROD_BOOK = "{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:\"God Fishing Rod\",color:\"aqua\",bold:true,italic:false},stored_enchantments:{luck_of_the_sea:6,lure:10,unbreaking:3,mending:2}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}";
     private static final String GOD_SHIELD_BOOK = "{buy:{id:emerald,count:35},buyB:{id:book,count:15},sell:{id:enchanted_book,count:1,components:{custom_name:{text:\"God Shield\",color:\"dark_red\",bold:true,italic:false},stored_enchantments:{unbreaking:4,mending:3,thorns:5}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}";
-    private static final String MAGNET_I_BOOK = bookTrade("Magnet I", "godvillagers:magnet:1", 32);
-    private static final String LIFE_STEAL_I_BOOK = bookTrade("Life Steal I", "godvillagers:life_steal:1", 32);
-    private static final String LIFE_STEAL_II_BOOK = bookTrade("Life Steal II", "godvillagers:life_steal:2", 40);
-    private static final String LIFE_STEAL_III_BOOK = bookTrade("Life Steal III", "godvillagers:life_steal:3", 48);
-    private static final String LOOTING_III_BOOK = bookTrade("Looting III", "looting:3", 24);
-    private static final String LOOTING_IV_BOOK = bookTrade("Looting IV", "looting:4", 32);
-    private static final String LOOTING_V_BOOK = bookTrade("Looting V", "looting:5", 40);
+    private static final String MAGNET_I_BOOK = bookTrade("Magnet I", "godvillagers:magnet", 1, 32);
+    private static final String LIFE_STEAL_I_BOOK = bookTrade("Life Steal I", "godvillagers:life_steal", 1, 32);
+    private static final String LIFE_STEAL_II_BOOK = bookTrade("Life Steal II", "godvillagers:life_steal", 2, 40);
+    private static final String LIFE_STEAL_III_BOOK = bookTrade("Life Steal III", "godvillagers:life_steal", 3, 48);
+    private static final String LOOTING_III_BOOK = bookTrade("Looting III", "minecraft:looting", 3, 24);
+    private static final String LOOTING_IV_BOOK = bookTrade("Looting IV", "minecraft:looting", 4, 32);
+    private static final String LOOTING_V_BOOK = bookTrade("Looting V", "minecraft:looting", 5, 40);
 
     private static final String CLERK_STRING = simpleTrade("string", 1, "emerald", 1);
     private static final String CLERK_ARROW = simpleTrade("arrow", 1, "emerald", 1);
     private static final String CLERK_COAL_GUNPOWDER = simpleTrade("coal", 2, "gunpowder", 1);
     private static final String CLERK_COPPER_GUNPOWDER = simpleTrade("copper_ingot", 3, "gunpowder", 1);
+    private static final String CLERK_BONE_BOOK = simpleTrade("bone", 1, "book", 1);
+    private static final String CLERK_COAL_BOOK = simpleTrade("coal", 2, "book", 1);
+    private static final String CLERK_COPPER_BOOK = simpleTrade("copper_ingot", 2, "book", 1);
+    private static final String CLERK_PHANTOM_EMERALD = simpleTrade("phantom_membrane", 1, "emerald", 1);
+    private static final String CLERK_PHANTOM_BOOK = simpleTrade("phantom_membrane", 1, "book", 1);
 
     private final String summonSuffix;
 
@@ -35,8 +40,8 @@ public final class SpecialistSpawnEggItem extends Item {
         this.summonSuffix = enhance(summonSuffix);
     }
 
-    private static String bookTrade(String name, String enchantment, int emeralds) {
-        return "{buy:{id:emerald,count:" + emeralds + "},buyB:{id:book,count:1},sell:{id:enchanted_book,count:1,components:{custom_name:{text:\"" + name + "\",color:\"gold\",italic:false},stored_enchantments:{" + enchantment + "}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}";
+    private static String bookTrade(String name, String enchantmentId, int level, int emeralds) {
+        return "{buy:{id:emerald,count:" + emeralds + "},buyB:{id:book,count:1},sell:{id:enchanted_book,count:1,components:{custom_name:{text:\"" + name + "\",color:\"gold\",italic:false},stored_enchantments:{\"" + enchantmentId + "\":" + level + "}}},maxUses:999999,rewardExp:0b,priceMultiplier:0f}";
     }
 
     private static String simpleTrade(String buyId, int buyCount, String sellId, int sellCount) {
@@ -70,6 +75,11 @@ public final class SpecialistSpawnEggItem extends Item {
             result = appendTrade(result, CLERK_ARROW);
             result = appendTrade(result, CLERK_COAL_GUNPOWDER);
             result = appendTrade(result, CLERK_COPPER_GUNPOWDER);
+            result = appendTrade(result, CLERK_BONE_BOOK);
+            result = appendTrade(result, CLERK_COAL_BOOK);
+            result = appendTrade(result, CLERK_COPPER_BOOK);
+            result = appendTrade(result, CLERK_PHANTOM_EMERALD);
+            result = appendTrade(result, CLERK_PHANTOM_BOOK);
         }
 
         return booksFirst(result);
@@ -80,7 +90,7 @@ public final class SpecialistSpawnEggItem extends Item {
     }
 
     private static boolean isClerkSpecialist(String command) {
-        return command.contains("Clerk Sage") || command.contains("Clerk Villager") || command.contains("God Clerk");
+        return command.contains("Clerk Sage") || command.contains("Clerk Villager") || command.contains("God Clerk") || command.contains("Grand Clerk");
     }
 
     private static String appendTrade(String command, String trade) {
@@ -127,7 +137,8 @@ public final class SpecialistSpawnEggItem extends Item {
         }
         if (books.isEmpty() || other.isEmpty()) return command;
         List<String> ordered = new ArrayList<>(recipes.size());
-        ordered.addAll(books); ordered.addAll(other);
+        ordered.addAll(books);
+        ordered.addAll(other);
         return command.substring(0, listStart) + String.join(",", ordered) + command.substring(listEnd);
     }
 
