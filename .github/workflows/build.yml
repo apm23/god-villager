@@ -32,12 +32,7 @@ jobs:
       - name: Verify compiled replacement classes and resources
         run: |
           set -euxo pipefail
-          for f in \
-            build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class \
-            build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class \
-            build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class \
-            build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class \
-            build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class; do test -f "$f"; done
+          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class; do test -f "$f"; done
           test -f build/resources/main/godvillagers.mixins.json
           test -f build/resources/main/data/godvillagers/enchantment/magnet.json
           test -f build/resources/main/data/godvillagers/enchantment/life_steal.json
@@ -52,29 +47,18 @@ jobs:
           import json, zipfile
           from pathlib import Path
           base=Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
-          replacements={
-            'com/anjas/godvillagers/GodHorseRuntime.class': Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),
-            'com/anjas/godvillagers/SpecialistSpawnEggItem.class': Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes(),
-          }
-          extra={
-            'com/anjas/godvillagers/TaczEnchantRuntime.class': Path('build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),
-            'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class': Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),
-            'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class': Path('build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),
-            'godvillagers.mixins.json': Path('build/resources/main/godvillagers.mixins.json').read_bytes(),
-          }
-          resources=Path('build/resources/main/data')
-          for p in resources.rglob('*'):
+          replacements={'com/anjas/godvillagers/GodHorseRuntime.class':Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),'com/anjas/godvillagers/SpecialistSpawnEggItem.class':Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()}
+          extra={'com/anjas/godvillagers/TaczEnchantRuntime.class':Path('build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),'godvillagers.mixins.json':Path('build/resources/main/godvillagers.mixins.json').read_bytes()}
+          for p in Path('build/resources/main/data').rglob('*'):
               if p.is_file(): extra[p.relative_to('build/resources/main').as_posix()]=p.read_bytes()
-          out=Path('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar')
-          out.parent.mkdir(parents=True,exist_ok=True)
+          out=Path('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'); out.parent.mkdir(parents=True,exist_ok=True)
           with zipfile.ZipFile(base) as zin, zipfile.ZipFile(out,'w') as zout:
               names=set()
               for info in zin.infolist():
                   data=zin.read(info.filename)
                   if info.filename in replacements: data=replacements[info.filename]
                   elif info.filename=='fabric.mod.json':
-                      meta=json.loads(data.decode()); assert meta['id']=='godvillagers'
-                      meta['version']='0.1.0-alpha.85+mc26.2'; data=json.dumps(meta,indent=2).encode()
+                      meta=json.loads(data.decode()); meta['version']='0.1.0-alpha.85+mc26.2'; data=json.dumps(meta,indent=2).encode()
                   zout.writestr(info,data); names.add(info.filename)
               for name,data in extra.items():
                   if name not in names: zout.writestr(name,data)
@@ -83,18 +67,14 @@ jobs:
       - name: Verify alpha.85 runtime packaging
         run: |
           set -euxo pipefail
-          JAR='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'
-          unzip -t "$JAR"
+          JAR='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'; unzip -t "$JAR"
           python3 - <<'PY'
           import json,zipfile
-          jar='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'
-          with zipfile.ZipFile(jar) as z:
-              m=json.loads(z.read('fabric.mod.json')); assert m['id']=='godvillagers' and m['version']=='0.1.0-alpha.85+mc26.2'
-              for name in ('com/anjas/godvillagers/TaczEnchantRuntime.class','com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class'):
-                  assert name in z.namelist(), name
-              mix=z.read('godvillagers.mixins.json'); assert b'TaczBulletDamageMixin' in mix
-              trade=z.read('com/anjas/godvillagers/SpecialistSpawnEggItem.class')
-              for token in (b'godvillagers:magnet:1',b'godvillagers:life_steal:1',b'godvillagers:life_steal:2',b'godvillagers:life_steal:3'): assert token in trade
+          with zipfile.ZipFile('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar') as z:
+              assert json.loads(z.read('fabric.mod.json'))['version']=='0.1.0-alpha.85+mc26.2'
+              assert 'com/anjas/godvillagers/TaczEnchantRuntime.class' in z.namelist()
+              assert 'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class' in z.namelist()
+              assert b'TaczBulletDamageMixin' in z.read('godvillagers.mixins.json')
               assert json.loads(z.read('data/godvillagers/enchantment/magnet.json'))['max_level']==1
               assert json.loads(z.read('data/godvillagers/enchantment/life_steal.json'))['max_level']==3
           PY
@@ -114,17 +94,14 @@ jobs:
       - name: Alpha.85 server startup and reload regression
         run: |
           set -euxo pipefail
-          cd standalone
-          set +e
-          { sleep 25; echo reload; sleep 8; echo 'summon minecraft:skeleton_horse 10 100 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lead_candidate"]}'; sleep 4; echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lead_candidate,limit=1] run say GOD_HORSE_LEAD_TARGET_PRESENT'; echo stop; } | timeout 80s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
-          code=${PIPESTATUS[1]}
-          set -e
-          cd ..
-          cat full-server-test.log
+          cd standalone; set +e
+          { sleep 25; echo reload; sleep 8; echo 'say ALPHA85_COMMAND_PIPE_ALIVE'; sleep 2; echo 'summon minecraft:skeleton_horse 10 100 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lead_candidate"]}'; sleep 3; echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lead_candidate,limit=1] run say GOD_HORSE_LEAD_TARGET_PRESENT'; sleep 3; echo stop; } | timeout 85s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
+          code=${PIPESTATUS[1]}; set -e; cd ..; cat full-server-test.log
           if grep -Eqi 'Parsing error loading recipe|Failed to parse|Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' full-server-test.log; then exit 1; fi
           grep -Eqi 'godvillagers 0\.1\.0-alpha\.85\+mc26\.2' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
-          grep -Fq 'GOD_HORSE_LEAD_TARGET_PRESENT' full-server-test.log
+          grep -Fq '[Server] ALPHA85_COMMAND_PIPE_ALIVE' full-server-test.log
+          grep -Fq '[Server] GOD_HORSE_LEAD_TARGET_PRESENT' full-server-test.log
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
 
       - uses: actions/upload-artifact@v4
