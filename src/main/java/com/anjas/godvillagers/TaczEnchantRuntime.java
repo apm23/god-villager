@@ -12,6 +12,9 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Optional TACZ enchant runtime with strict per-shooter ownership. */
 public final class TaczEnchantRuntime {
@@ -21,6 +24,7 @@ public final class TaczEnchantRuntime {
     private static final float[] LIFE_STEAL_RATIOS = {0.0F, 0.05F, 0.075F, 0.10F};
     public static final float ABSORPTION_RATIO = 0.50F;
     public static final float MAX_ABSORPTION_HEALTH = 4.0F;
+    private static final Map<UUID, UUID> MAGNET_FATAL_SHOOTERS = new ConcurrentHashMap<>();
 
     private TaczEnchantRuntime() {}
 
@@ -44,22 +48,30 @@ public final class TaczEnchantRuntime {
         if (lifeSteal <= 0 && magnet <= 0) return;
 
         if (lifeSteal > 0) applyLifeSteal(shooter, requestedDamage, lifeSteal);
-        // Magnet remains kill-only and will be applied only after fatal-shot ownership is proven.
+
+        // Only the TACZ hit that actually leaves the victim dead may claim Magnet.
+        // A previous contributor never owns the reward if another player lands the kill.
+        if (magnet > 0 && victim.isDeadOrDying() && !sharedBossReward(victim)) {
+            MAGNET_FATAL_SHOOTERS.put(victim.getUUID(), shooter.getUUID());
+        }
+    }
+
+    /** Consume once from the eventual death/drop bridge; never falls back to nearest player. */
+    public static UUID consumeMagnetFatalShooter(LivingEntity victim) {
+        if (victim == null || sharedBossReward(victim)) return null;
+        return MAGNET_FATAL_SHOOTERS.remove(victim.getUUID());
     }
 
     static void applyLifeSteal(ServerPlayer shooter, float bulletDamage, int level) {
         float budget = healingForDamage(bulletDamage, level);
         if (budget <= 0.0F) return;
-
         float missing = Math.max(0.0F, shooter.getMaxHealth() - shooter.getHealth());
         float directHeal = Math.min(missing, budget);
         if (directHeal > 0.0F) shooter.heal(directHeal);
-
         float overflow = budget - directHeal;
         if (overflow <= 0.0F) return;
         float extra = absorptionForOverflow(overflow);
-        float current = shooter.getAbsorptionAmount();
-        shooter.setAbsorptionAmount(Math.min(MAX_ABSORPTION_HEALTH, current + extra));
+        shooter.setAbsorptionAmount(Math.min(MAX_ABSORPTION_HEALTH, shooter.getAbsorptionAmount() + extra));
     }
 
     static ServerPlayer exactShooter(DamageSource source) {
@@ -84,9 +96,7 @@ public final class TaczEnchantRuntime {
         ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
         for (Holder<Enchantment> holder : enchantments.keySet()) {
             var key = holder.unwrapKey();
-            if (key.isPresent() && key.get().identifier().toString().equals(wantedId)) {
-                return enchantments.getLevel(holder);
-            }
+            if (key.isPresent() && key.get().identifier().toString().equals(wantedId)) return enchantments.getLevel(holder);
         }
         return 0;
     }
