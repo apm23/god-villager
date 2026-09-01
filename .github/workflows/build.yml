@@ -62,6 +62,25 @@ jobs:
                   if name not in names:zout.writestr(name,data)
           PY
           unzip -t build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar
+      - name: Verify final alpha85 artifact
+        run: |
+          set -euxo pipefail
+          JAR='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'
+          unzip -t "$JAR"
+          unzip -p "$JAR" fabric.mod.json | grep -F '0.1.0-alpha.85+mc26.2'
+          for entry in \
+            com/anjas/godvillagers/GodHorseRuntime.class \
+            com/anjas/godvillagers/SpecialistSpawnEggItem.class \
+            com/anjas/godvillagers/TaczEnchantRuntime.class \
+            com/anjas/godvillagers/mixin/GodHorseLeashMixin.class \
+            com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class \
+            com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class \
+            godvillagers.mixins.json; do
+            unzip -Z1 "$JAR" | grep -Fx "$entry"
+            test "$(unzip -Z1 "$JAR" | grep -Fxc "$entry")" = '1'
+          done
+          test "$(unzip -p "$JAR" com/anjas/godvillagers/SpecialistSpawnEggItem.class | sha256sum | cut -d' ' -f1)" = "$(sha256sum build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class | cut -d' ' -f1)"
+          sha256sum "$JAR"
       - name: Prepare dedicated server
         run: |
           curl -fL --retry 3 -o fabric-installer.jar 'https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.1.0/fabric-installer-1.1.0.jar'
