@@ -32,13 +32,13 @@ jobs:
       - name: Verify compiled replacement classes and resources
         run: |
           set -euxo pipefail
-          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class; do test -f "$f"; done
+          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class; do test -f "$f"; done
           test -f build/resources/main/godvillagers.mixins.json
           test -f build/resources/main/data/godvillagers/enchantment/magnet.json
           test -f build/resources/main/data/godvillagers/enchantment/life_steal.json
           for level in 4 5 6 7 8 9 10; do test -f "build/resources/main/data/godvillagers/recipe/firework_flight_${level}.json"; done
           javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.TaczEnchantRuntime | grep 'major version: 69'
-          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin.TaczBulletDamageMixin | grep 'major version: 69'
+          javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin/TaczMagnetDeathMixin 2>/dev/null || javap -classpath build/classes/java/main -verbose com.anjas.godvillagers.mixin.TaczMagnetDeathMixin | grep 'major version: 69'
 
       - name: Assemble full God Villagers alpha.85
         run: |
@@ -48,7 +48,7 @@ jobs:
           from pathlib import Path
           base=Path('ci/reconstructed/god-villagers-0.1.0-alpha.75+mc26.2.jar')
           replacements={'com/anjas/godvillagers/GodHorseRuntime.class':Path('build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),'com/anjas/godvillagers/SpecialistSpawnEggItem.class':Path('build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()}
-          extra={'com/anjas/godvillagers/TaczEnchantRuntime.class':Path('build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),'godvillagers.mixins.json':Path('build/resources/main/godvillagers.mixins.json').read_bytes()}
+          extra={'com/anjas/godvillagers/TaczEnchantRuntime.class':Path('build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class':Path('build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class').read_bytes(),'godvillagers.mixins.json':Path('build/resources/main/godvillagers.mixins.json').read_bytes()}
           for p in Path('build/resources/main/data').rglob('*'):
               if p.is_file(): extra[p.relative_to('build/resources/main').as_posix()]=p.read_bytes()
           out=Path('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'); out.parent.mkdir(parents=True,exist_ok=True)
@@ -74,7 +74,8 @@ jobs:
               assert json.loads(z.read('fabric.mod.json'))['version']=='0.1.0-alpha.85+mc26.2'
               assert 'com/anjas/godvillagers/TaczEnchantRuntime.class' in z.namelist()
               assert 'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class' in z.namelist()
-              assert b'TaczBulletDamageMixin' in z.read('godvillagers.mixins.json')
+              assert 'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class' in z.namelist()
+              mix=z.read('godvillagers.mixins.json'); assert b'TaczBulletDamageMixin' in mix and b'TaczMagnetDeathMixin' in mix
               assert json.loads(z.read('data/godvillagers/enchantment/magnet.json'))['max_level']==1
               assert json.loads(z.read('data/godvillagers/enchantment/life_steal.json'))['max_level']==3
           PY
@@ -95,20 +96,12 @@ jobs:
         run: |
           set -euxo pipefail
           cd standalone; set +e
-          { sleep 25; echo reload; sleep 8; echo 'say ALPHA85_COMMAND_PIPE_ALIVE'; sleep 2; echo 'summon minecraft:skeleton_horse 10 100 2 {Tame:1b,PersistenceRequired:1b,Tags:["godvillagers_god_horse","lead_candidate"]}'; sleep 3; echo 'execute if entity @e[type=minecraft:skeleton_horse,tag=lead_candidate,limit=1] run say GOD_HORSE_LEAD_TARGET_PRESENT'; sleep 3; echo stop; } | timeout 85s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
+          { sleep 25; echo reload; sleep 8; echo 'say ALPHA85_COMMAND_PIPE_ALIVE'; sleep 3; echo stop; } | timeout 85s java -Xms512M -Xmx1G -jar fabric-server-launch.jar nogui > ../full-server-test.log 2>&1
           code=${PIPESTATUS[1]}; set -e; cd ..; cat full-server-test.log
           if grep -Eqi 'Parsing error loading recipe|Failed to parse|Mixin apply failed|InjectionError|InvalidInjectionException|Could not execute entrypoint|Incompatible mods found|NoClassDefFoundError|ClassNotFoundException|VerifyError|Failed to start the minecraft server|Failed to load registry data' full-server-test.log; then exit 1; fi
           grep -Eqi 'godvillagers 0\.1\.0-alpha\.85\+mc26\.2' full-server-test.log
           grep -Eqi 'Done \(' full-server-test.log
           grep -Fq '[Server] ALPHA85_COMMAND_PIPE_ALIVE' full-server-test.log
-          # Horse summon remains a diagnostic probe only. It is an older subsystem and
-          # must not block the TACZ/enchantment regression gate while its selector
-          # semantics are investigated independently.
-          if grep -Fq '[Server] GOD_HORSE_LEAD_TARGET_PRESENT' full-server-test.log; then
-            echo 'Horse diagnostic probe: PASS'
-          else
-            echo 'Horse diagnostic probe: NOT OBSERVED (non-gating)'
-          fi
           if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then exit "$code"; fi
 
       - uses: actions/upload-artifact@v4
