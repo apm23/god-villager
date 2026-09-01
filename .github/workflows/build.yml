@@ -17,23 +17,27 @@ jobs:
           gradle-version: '9.5.0'
       - name: Clean compile
         run: gradle clean classes processResources --stacktrace
-      - name: Reconstruct and diagnose alpha.82 base
+      - name: Reconstruct and repair alpha.82 base
         run: |
           set -euxo pipefail
           mkdir -p ci/reconstructed
-          cat ci/base82_base64/part_*.b64 | base64 -d > ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar
+          RAW='ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.raw.jar'
           BASE='ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar'
-          stat -c 'ALPHA82_SIZE=%s' "$BASE"
-          sha256sum "$BASE"
-          unzip -t "$BASE"
+          cat ci/base82_base64/part_*.b64 | base64 -d > "$RAW"
+          stat -c 'ALPHA82_RAW_SIZE=%s' "$RAW"
+          sha256sum "$RAW"
+          test "$(stat -c%s "$RAW")" = '24104'
+          # The committed base64 snapshot has two damaged ZIP bytes around the old
+          # SpecialistSpawnEggItem entry. Rebuild the central directory from local
+          # headers; that class is replaced from the current clean compile below.
+          zip -FF "$RAW" --out "$BASE"
           unzip -p "$BASE" fabric.mod.json | grep -F '0.1.0-alpha.82+mc26.2'
-          test "$(stat -c%s "$BASE")" = '24104'
       - name: Verify alpha85 compiled overlay
         run: |
           set -euxo pipefail
           for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class; do test -f "$f"; done
           test -f build/resources/main/godvillagers.mixins.json
-      - name: Assemble alpha.85 from alpha.82
+      - name: Assemble alpha.85 from repaired alpha.82
         run: |
           python3 - <<'PY'
           import json,zipfile
@@ -47,9 +51,11 @@ jobs:
           with zipfile.ZipFile(base) as zin,zipfile.ZipFile(out,'w') as zout:
               names=set()
               for info in zin.infolist():
-                  data=zin.read(info.filename)
-                  if info.filename in replacements:data=replacements[info.filename]
-                  elif info.filename=='fabric.mod.json':
+                  if info.filename in replacements:
+                      data=replacements[info.filename]
+                  else:
+                      data=zin.read(info.filename)
+                  if info.filename=='fabric.mod.json':
                       meta=json.loads(data.decode());meta['version']='0.1.0-alpha.85+mc26.2';data=json.dumps(meta,indent=2).encode()
                   zout.writestr(info,data);names.add(info.filename)
               for name,data in extra.items():
