@@ -38,11 +38,17 @@ public final class TaczEnchantRuntime {
     }
 
     public static void afterSuccessfulDamage(LivingEntity victim, DamageSource source, float requestedDamage) {
-        if (victim == null || source == null || requestedDamage <= 0.0F || !looksLikeTaczBullet(source)) return;
+        if (victim == null || source == null || requestedDamage <= 0.0F) return;
         ServerPlayer shooter = exactShooter(source);
         if (shooter == null) return;
+
+        // TACZ 26.2 may not expose a persistent bullet entity through DamageSource.
+        // The authoritative server shooter holding a TACZ gun is the cheap fallback;
+        // projectile/source hints are accepted when available but are not required.
         ItemStack gun = shooter.getMainHandItem();
         if (!looksLikeTaczGun(gun)) return;
+        if (!looksLikeTaczDamage(source) && source.getDirectEntity() == shooter) return;
+
         int lifeSteal = enchantLevel(gun, LIFE_STEAL_ID);
         int magnet = enchantLevel(gun, MAGNET_ID);
         if (lifeSteal <= 0 && magnet <= 0) return;
@@ -70,14 +76,19 @@ public final class TaczEnchantRuntime {
 
     static ServerPlayer exactShooter(DamageSource source) {
         Entity owner = source.getEntity();
-        return owner instanceof ServerPlayer player ? player : null;
+        if (owner instanceof ServerPlayer player) return player;
+        Entity direct = source.getDirectEntity();
+        return direct instanceof ServerPlayer player ? player : null;
     }
 
-    static boolean looksLikeTaczBullet(DamageSource source) {
+    static boolean looksLikeTaczDamage(DamageSource source) {
         Entity direct = source.getDirectEntity();
-        if (direct == null) return false;
-        String name = direct.getClass().getName().toLowerCase(Locale.ROOT);
-        return name.contains("tacz") && (name.contains("bullet") || name.contains("projectile"));
+        if (direct != null) {
+            String name = direct.getClass().getName().toLowerCase(Locale.ROOT);
+            if (name.contains("tacz") || name.contains("bullet") || name.contains("projectile")) return true;
+        }
+        String text = source.toString().toLowerCase(Locale.ROOT);
+        return text.contains("tacz") || text.contains("bullet") || text.contains("gun") || text.contains("shot");
     }
 
     static boolean looksLikeTaczGun(ItemStack stack) {
