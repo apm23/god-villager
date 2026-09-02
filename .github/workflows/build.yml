@@ -30,7 +30,7 @@ jobs:
       - name: Verify alpha85 compiled overlay
         run: |
           set -euxo pipefail
-          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class; do test -f "$f"; done
+          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/TaczDirectEventRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczHurtEventMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczKillEventMixin.class; do test -f "$f"; done
           test -f build/resources/main/godvillagers.mixins.json
       - name: Assemble alpha.85 from repaired alpha.82
         run: |
@@ -39,7 +39,16 @@ jobs:
           from pathlib import Path
           base=Path('ci/reconstructed/god-villagers-0.1.0-alpha.82+mc26.2.jar'); classes=Path('build/classes/java/main'); resources=Path('build/resources/main')
           replacements={'com/anjas/godvillagers/GodHorseRuntime.class':(classes/'com/anjas/godvillagers/GodHorseRuntime.class').read_bytes(),'com/anjas/godvillagers/SpecialistSpawnEggItem.class':(classes/'com/anjas/godvillagers/SpecialistSpawnEggItem.class').read_bytes()}
-          extra={'com/anjas/godvillagers/TaczEnchantRuntime.class':(classes/'com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':(classes/'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class').read_bytes(),'godvillagers.mixins.json':(resources/'godvillagers.mixins.json').read_bytes()}
+          extra={
+            'com/anjas/godvillagers/TaczEnchantRuntime.class':(classes/'com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),
+            'com/anjas/godvillagers/TaczDirectEventRuntime.class':(classes/'com/anjas/godvillagers/TaczDirectEventRuntime.class').read_bytes(),
+            'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':(classes/'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),
+            'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class').read_bytes(),
+            'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class').read_bytes(),
+            'com/anjas/godvillagers/mixin/TaczHurtEventMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczHurtEventMixin.class').read_bytes(),
+            'com/anjas/godvillagers/mixin/TaczKillEventMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczKillEventMixin.class').read_bytes(),
+            'godvillagers.mixins.json':(resources/'godvillagers.mixins.json').read_bytes()
+          }
           for p in (resources/'data').rglob('*'):
               if p.is_file(): extra[p.relative_to(resources).as_posix()]=p.read_bytes()
           out=Path('build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'); out.parent.mkdir(parents=True,exist_ok=True)
@@ -61,7 +70,7 @@ jobs:
           JAR='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'
           unzip -t "$JAR"
           unzip -p "$JAR" fabric.mod.json | grep -F '0.1.0-alpha.85+mc26.2'
-          for entry in com/anjas/godvillagers/GodHorseRuntime.class com/anjas/godvillagers/SpecialistSpawnEggItem.class com/anjas/godvillagers/TaczEnchantRuntime.class com/anjas/godvillagers/mixin/GodHorseLeashMixin.class com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class godvillagers.mixins.json data/godvillagers/tags/item/tacz_enchantable.json; do
+          for entry in com/anjas/godvillagers/GodHorseRuntime.class com/anjas/godvillagers/SpecialistSpawnEggItem.class com/anjas/godvillagers/TaczEnchantRuntime.class com/anjas/godvillagers/TaczDirectEventRuntime.class com/anjas/godvillagers/mixin/GodHorseLeashMixin.class com/anjas/godvillagers/mixin/TaczBulletDamageMixin.class com/anjas/godvillagers/mixin/TaczMagnetDeathMixin.class com/anjas/godvillagers/mixin/TaczHurtEventMixin.class com/anjas/godvillagers/mixin/TaczKillEventMixin.class godvillagers.mixins.json data/godvillagers/tags/item/tacz_enchantable.json; do
             unzip -Z1 "$JAR" | grep -Fx "$entry"
             test "$(unzip -Z1 "$JAR" | grep -Fxc "$entry")" = '1'
           done
