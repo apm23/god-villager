@@ -30,7 +30,7 @@ jobs:
       - name: Verify alpha85 compiled overlay
         run: |
           set -euxo pipefail
-          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/TaczDirectEventRuntime.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczInitMixin.class; do test -f "$f"; done
+          for f in build/classes/java/main/com/anjas/godvillagers/GodHorseRuntime.class build/classes/java/main/com/anjas/godvillagers/SpecialistSpawnEggItem.class build/classes/java/main/com/anjas/godvillagers/TaczEnchantRuntime.class build/classes/java/main/com/anjas/godvillagers/TaczDirectEventRuntime.class build/classes/java/main/com/anjas/godvillagers/TaczBridgeBootstrap.class build/classes/java/main/com/anjas/godvillagers/mixin/GodHorseLeashMixin.class build/classes/java/main/com/anjas/godvillagers/mixin/TaczInitMixin.class; do test -f "$f"; done
           test -f build/resources/main/godvillagers.mixins.json
       - name: Assemble alpha.85 from repaired alpha.82
         run: |
@@ -42,6 +42,7 @@ jobs:
           extra={
             'com/anjas/godvillagers/TaczEnchantRuntime.class':(classes/'com/anjas/godvillagers/TaczEnchantRuntime.class').read_bytes(),
             'com/anjas/godvillagers/TaczDirectEventRuntime.class':(classes/'com/anjas/godvillagers/TaczDirectEventRuntime.class').read_bytes(),
+            'com/anjas/godvillagers/TaczBridgeBootstrap.class':(classes/'com/anjas/godvillagers/TaczBridgeBootstrap.class').read_bytes(),
             'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class':(classes/'com/anjas/godvillagers/mixin/GodHorseLeashMixin.class').read_bytes(),
             'com/anjas/godvillagers/mixin/TaczInitMixin.class':(classes/'com/anjas/godvillagers/mixin/TaczInitMixin.class').read_bytes(),
             'godvillagers.mixins.json':(resources/'godvillagers.mixins.json').read_bytes()
@@ -55,7 +56,12 @@ jobs:
                   if info.filename in replacements: data=replacements[info.filename]
                   else: data=zin.read(info.filename)
                   if info.filename=='fabric.mod.json':
-                      meta=json.loads(data.decode());meta['version']='0.1.0-alpha.85+mc26.2';data=json.dumps(meta,indent=2).encode()
+                      meta=json.loads(data.decode());meta['version']='0.1.0-alpha.85+mc26.2'
+                      entrypoints=meta.setdefault('entrypoints',{}); main=entrypoints.setdefault('main',[])
+                      if isinstance(main,str): main=[main]; entrypoints['main']=main
+                      bridge='com.anjas.godvillagers.TaczBridgeBootstrap'
+                      if bridge not in main: main.append(bridge)
+                      data=json.dumps(meta,indent=2).encode()
                   zout.writestr(info,data);names.add(info.filename)
               for name,data in extra.items():
                   if name not in names:zout.writestr(name,data)
@@ -67,7 +73,8 @@ jobs:
           JAR='build/full/god-villagers-0.1.0-alpha.85+mc26.2.jar'
           unzip -t "$JAR"
           unzip -p "$JAR" fabric.mod.json | grep -F '0.1.0-alpha.85+mc26.2'
-          for entry in com/anjas/godvillagers/GodHorseRuntime.class com/anjas/godvillagers/SpecialistSpawnEggItem.class com/anjas/godvillagers/TaczEnchantRuntime.class com/anjas/godvillagers/TaczDirectEventRuntime.class com/anjas/godvillagers/mixin/GodHorseLeashMixin.class com/anjas/godvillagers/mixin/TaczInitMixin.class godvillagers.mixins.json data/godvillagers/tags/item/tacz_enchantable.json; do
+          unzip -p "$JAR" fabric.mod.json | grep -F 'com.anjas.godvillagers.TaczBridgeBootstrap'
+          for entry in com/anjas/godvillagers/GodHorseRuntime.class com/anjas/godvillagers/SpecialistSpawnEggItem.class com/anjas/godvillagers/TaczEnchantRuntime.class com/anjas/godvillagers/TaczDirectEventRuntime.class com/anjas/godvillagers/TaczBridgeBootstrap.class com/anjas/godvillagers/mixin/GodHorseLeashMixin.class com/anjas/godvillagers/mixin/TaczInitMixin.class godvillagers.mixins.json data/godvillagers/tags/item/tacz_enchantable.json; do
             unzip -Z1 "$JAR" | grep -Fx "$entry"
             test "$(unzip -Z1 "$JAR" | grep -Fxc "$entry")" = '1'
           done
