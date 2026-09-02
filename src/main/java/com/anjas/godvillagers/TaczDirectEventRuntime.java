@@ -8,17 +8,55 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Direct bridge for TACZ's own gun events. This intentionally uses reflection so
- * God Villagers keeps no hard runtime dependency when TACZ is absent.
- */
+/** Reflection-only bridge to TACZ Fabric events; no hard TACZ dependency is linked. */
 public final class TaczDirectEventRuntime {
     private static final double MAGNET_RADIUS = 3.0D;
     private static final int FRESH_ENTITY_TICKS = 8;
+    private static final AtomicBoolean REGISTERED = new AtomicBoolean(false);
 
     private TaczDirectEventRuntime() {}
+
+    public static void registerEvents() {
+        if (!REGISTERED.compareAndSet(false, true)) return;
+        try {
+            register("com.tacz.guns.api.event.common.EntityHurtByGunEvent", "POST",
+                    "com.tacz.guns.api.event.common.EntityHurtByGunEvent$PostCallBack", TaczDirectEventRuntime::onGunHurtPost);
+            register("com.tacz.guns.api.event.common.EntityKillByGunEvent", "CALLBACK",
+                    "com.tacz.guns.api.event.common.EntityKillByGunEvent$Callback", TaczDirectEventRuntime::onGunKill);
+            System.out.println("[God Villagers] TACZ direct hit/kill event bridge registered");
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            REGISTERED.set(false);
+            System.err.println("[God Villagers] Failed to register TACZ direct event bridge: " + e);
+        }
+    }
+
+    private static void register(String eventClassName, String fieldName, String callbackClassName, EventHandler handler)
+            throws ReflectiveOperationException {
+        ClassLoader loader = TaczDirectEventRuntime.class.getClassLoader();
+        Class<?> eventClass = Class.forName(eventClassName, true, loader);
+        Class<?> callbackClass = Class.forName(callbackClassName, true, loader);
+        Field field = eventClass.getField(fieldName);
+        Object fabricEvent = field.get(null);
+        Object callback = Proxy.newProxyInstance(loader, new Class<?>[]{callbackClass}, (proxy, method, args) -> {
+            if (method.getDeclaringClass() == Object.class) {
+                return switch (method.getName()) {
+                    case "toString" -> "GodVillagersTaczCallback[" + callbackClass.getSimpleName() + "]";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == (args == null ? null : args[0]);
+                    default -> null;
+                };
+            }
+            if (args != null && args.length > 0) handler.handle(args[0]);
+            return null;
+        });
+        Method register = fabricEvent.getClass().getMethod("register", Object.class);
+        register.invoke(fabricEvent, callback);
+    }
 
     public static void onGunHurtPost(Object event) {
         ServerPlayer shooter = serverPlayer(invoke(event, "getAttacker"));
@@ -54,8 +92,6 @@ public final class TaczDirectEventRuntime {
         if (!(victim.level() instanceof ServerLevel level) || shooter.level() != level) return;
 
         final double x = victim.getX(), y = victim.getY(), z = victim.getZ();
-        // Queue after TACZ's kill event returns so vanilla/TACZ death rewards have had a
-        // chance to spawn. The scan is tiny and event-only, independent of sniper range.
         level.getServer().execute(() -> deliverFreshRewards(level, shooter, x, y, z));
     }
 
@@ -98,5 +134,10 @@ public final class TaczDirectEventRuntime {
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return null;
         }
+    }
+
+    @FunctionalInterface
+    private interface EventHandler {
+        void handle(Object event);
     }
 }
