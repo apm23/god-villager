@@ -55,14 +55,11 @@ public final class TaczDirectEventRuntime {
             if (args != null && args.length > 0) handler.accept(args[0]);
             return null;
         });
-        Method register = null;
-        for (Method candidate : fabricEvent.getClass().getMethods()) {
-            if (candidate.getName().equals("register") && candidate.getParameterCount() == 1) {
-                register = candidate;
-                break;
-            }
-        }
-        if (register == null) throw new NoSuchMethodException(fabricEvent.getClass().getName() + ".register(callback)");
+        // The concrete ArrayBackedEvent implementation is package-private, so reflecting
+        // a Method obtained from its runtime class fails Java access checks even though
+        // register itself is public. Invoke through Fabric API's public Event interface.
+        Class<?> fabricEventInterface = Class.forName("net.fabricmc.fabric.api.event.Event", true, loader);
+        Method register = fabricEventInterface.getMethod("register", Object.class);
         register.invoke(fabricEvent, callback);
     }
 
