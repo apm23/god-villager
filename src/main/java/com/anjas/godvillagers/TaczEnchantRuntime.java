@@ -2,16 +2,14 @@ package com.anjas.godvillagers;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
-
-import java.util.Locale;
 
 /** Optional TACZ enchant runtime with strict per-shooter ownership. */
 public final class TaczEnchantRuntime {
@@ -63,13 +61,27 @@ public final class TaczEnchantRuntime {
         Entity owner = source.getEntity();
         if (owner instanceof ServerPlayer player) return player;
         Entity direct = source.getDirectEntity();
-        return direct instanceof ServerPlayer player ? player : null;
+        if (direct instanceof ServerPlayer player) return player;
+        if (direct instanceof Projectile projectile && projectile.getOwner() instanceof ServerPlayer player) return player;
+        return null;
     }
 
     public static boolean looksLikeTaczGun(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
-        String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase(Locale.ROOT);
-        return id.startsWith("tacz:") || id.contains(":tacz_") || id.contains("tacz");
+        // TACZ Refabricated 26.2 uses the vanilla/custom-data-backed GunData component;
+        // the registry item is a generic gun container, so namespace/name heuristics alone
+        // are not reliable for every gun pack. The component is the authoritative signal.
+        try {
+            var customData = stack.get(DataComponents.CUSTOM_DATA);
+            if (customData != null) {
+                String serialized = customData.copyTag().toString();
+                if (serialized.contains("GunId") || serialized.contains("gun_id") || serialized.contains("tacz:")) return true;
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to registry/component-independent checks.
+        }
+        String text = stack.toString().toLowerCase(java.util.Locale.ROOT);
+        return text.contains("tacz") || text.contains("modern_kinetic_gun") || text.contains("gunid");
     }
 
     public static int enchantLevel(ItemStack stack, String wantedId) {
@@ -82,7 +94,7 @@ public final class TaczEnchantRuntime {
     }
 
     public static boolean sharedBossReward(LivingEntity victim) {
-        String id = victim.getType().toString().toLowerCase(Locale.ROOT);
+        String id = victim.getType().toString().toLowerCase(java.util.Locale.ROOT);
         return id.contains("ender_dragon") || id.contains("wither");
     }
 }
