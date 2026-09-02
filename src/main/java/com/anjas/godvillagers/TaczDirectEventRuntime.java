@@ -54,7 +54,17 @@ public final class TaczDirectEventRuntime {
             if (args != null && args.length > 0) handler.handle(args[0]);
             return null;
         });
-        Method register = fabricEvent.getClass().getMethod("register", Object.class);
+        // Fabric's Event API exposes register(T), whose erased parameter is the callback
+        // interface itself rather than Object. Resolve the single public register method
+        // by name/arity so this reflection bridge works with TACZ's real Event instance.
+        Method register = null;
+        for (Method candidate : fabricEvent.getClass().getMethods()) {
+            if (candidate.getName().equals("register") && candidate.getParameterCount() == 1) {
+                register = candidate;
+                break;
+            }
+        }
+        if (register == null) throw new NoSuchMethodException(fabricEvent.getClass().getName() + ".register(callback)");
         register.invoke(fabricEvent, callback);
     }
 
