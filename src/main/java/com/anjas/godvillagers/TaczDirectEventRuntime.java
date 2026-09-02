@@ -12,6 +12,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /** Reflection-only bridge to TACZ Fabric events; no hard TACZ dependency is linked. */
 public final class TaczDirectEventRuntime {
@@ -35,7 +36,7 @@ public final class TaczDirectEventRuntime {
         }
     }
 
-    private static void register(String eventClassName, String fieldName, String callbackClassName, EventHandler handler)
+    private static void register(String eventClassName, String fieldName, String callbackClassName, Consumer<Object> handler)
             throws ReflectiveOperationException {
         ClassLoader loader = TaczDirectEventRuntime.class.getClassLoader();
         Class<?> eventClass = Class.forName(eventClassName, true, loader);
@@ -51,12 +52,9 @@ public final class TaczDirectEventRuntime {
                     default -> null;
                 };
             }
-            if (args != null && args.length > 0) handler.handle(args[0]);
+            if (args != null && args.length > 0) handler.accept(args[0]);
             return null;
         });
-        // Fabric's Event API exposes register(T), whose erased parameter is the callback
-        // interface itself rather than Object. Resolve the single public register method
-        // by name/arity so this reflection bridge works with TACZ's real Event instance.
         Method register = null;
         for (Method candidate : fabricEvent.getClass().getMethods()) {
             if (candidate.getName().equals("register") && candidate.getParameterCount() == 1) {
@@ -144,10 +142,5 @@ public final class TaczDirectEventRuntime {
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return null;
         }
-    }
-
-    @FunctionalInterface
-    private interface EventHandler {
-        void handle(Object event);
     }
 }
